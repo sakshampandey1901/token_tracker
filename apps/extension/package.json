@@ -8,7 +8,6 @@
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Visualization"],
-  "icon": "resources/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
