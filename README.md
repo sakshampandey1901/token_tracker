@@ -1,0 +1,166 @@
+# Token Tracker
+
+> Free, open-source, real-time LLM token usage tracker.
+> A live dashboard + a VS Code / Cursor extension, backed by Supabase (free tier).
+
+- **Live dashboard on the home screen** — 24-hour rolling meter against your tier limit
+- **Weekly comparison** — this week vs. last week, per day, per provider
+- **Real-time** — every call streams to the dashboard within ~1s via Supabase Realtime
+- **Secure by default** — Row-Level Security on every table, per-user rotatable ingest tokens, secrets in OS keychain
+- **Three ways to run it** — hosted web app, VS Code / Cursor extension, or `git clone` and self-host
+
+```
+┌─────────────────────────┐     ┌──────────────────────────┐     ┌──────────────────────┐
+│ VS Code / Cursor ext.   │──▶  │  Supabase Edge Function  │──▶  │  Postgres + Realtime │
+│  (local HTTP + status)  │     │  /functions/v1/ingest    │     │  (RLS per user)      │
+└─────────────────────────┘     └──────────────────────────┘     └──────────┬───────────┘
+                                                                            │
+                                                                            ▼
+                                                                 ┌──────────────────────┐
+                                                                 │ Next.js dashboard    │
+                                                                 │ (realtime subscribe) │
+                                                                 └──────────────────────┘
+```
+
+---
+
+## Quick start (self-host, ~5 minutes)
+
+### Prereqs
+- Node ≥ 18.18, `pnpm` ≥ 9 (`npm i -g pnpm`)
+- [Supabase account](https://app.supabase.com) (free tier is enough)
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase/tap/supabase` or [download](https://github.com/supabase/cli/releases))
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/your-org/token-tracker.git
+cd token-tracker
+pnpm install
+```
+
+### 2. Create a Supabase project and apply migrations
+
+```bash
+# Link your local repo to the hosted project
+supabase login
+supabase link --project-ref <your-project-ref>
+
+# Push the schema + RLS policies
+supabase db push
+# Deploy the three Edge Functions
+supabase functions deploy ingest
+supabase functions deploy status
+supabase functions deploy rotate-token
+
+# Set the shared secret the functions need (service role is auto-wired)
+supabase secrets set SUPABASE_ANON_KEY="<your anon / publishable key>"
+```
+
+### 3. Configure and run the dashboard
+
+```bash
+cp .env.example apps/web/.env.local
+# fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+pnpm dev:web
+# → http://localhost:3000
+```
+
+Sign in with GitHub, Google, or a magic link. The dashboard renders immediately
+with a `0 / 100K` meter and an "Extension pairing" card containing your ingest token.
+
+### 4. Install the extension
+
+```bash
+# VS Code
+pnpm --filter @token-tracker/extension package
+code --install-extension apps/extension/token-tracker.vsix
+
+# Cursor (same VSIX, different binary name)
+cursor --install-extension apps/extension/token-tracker.vsix
+```
+
+Open the command palette, run **Token Tracker: Sign in**, paste the Supabase URL
+and the ingest token from the dashboard. You should see a status-bar item like
+`⏺ 0 / 100K` appear on the right.
+
+### 5. Send a test event
+
+```bash
+curl -X POST http://127.0.0.1:58417/ingest \
+  -H 'content-type: application/json' \
+  -d '{"provider":"openai","model":"gpt-4o","input_tokens":1234,"output_tokens":567}'
+```
+
+The dashboard updates in realtime, the status bar ticks up within ~30s.
+
+---
+
+## Project layout
+
+```
+apps/
+  web/          Next.js 14 dashboard (App Router, Tailwind, Recharts)
+  extension/    VS Code / Cursor extension (TypeScript, esbuild, no bundled runtime)
+packages/
+  shared/       Types + pricing table shared by web + extension
+supabase/
+  migrations/   SQL: tables, RLS policies, triggers, views
+  functions/    Edge Functions: ingest / status / rotate-token
+```
+
+## How auth works
+
+Two complementary mechanisms, each appropriate for where it runs:
+
+| Surface        | Auth mechanism                                                 | Why                                                                                   |
+| -------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Web dashboard  | Supabase Auth (OAuth or email magic link) with SSR cookie      | Browser sessions, supports RLS using `auth.uid()`                                     |
+| Extension / CLI| Per-user, rotatable `ingest_token` (hex, stored in SecretStorage) | No OAuth round-trip from an IDE; rotatable if leaked; validated server-side in Edge Functions |
+
+`ingest_token` is **write-only** from the extension's perspective — it authorizes
+inserts into `usage_events`. All reads still go through the dashboard's
+authenticated session and RLS.
+
+## How 24-hour monitoring works
+
+1. Extension POSTs an event → `/functions/v1/ingest`
+2. Edge Function validates the `ingest_token`, calls `ingest_usage()` RPC
+3. RPC inserts into `usage_events` (append-only)
+4. Trigger `usage_events_bump_daily` updates `daily_rollups` (one row per user per UTC day)
+5. Supabase Realtime broadcasts the INSERT
+6. Dashboard subscription pushes it into the UI; extension's status bar polls the `status` Edge Function every 30s
+
+The `usage_live_24h` view (security_invoker) computes the rolling window on demand.
+A re-sync fires every 60s in the dashboard in case realtime misses a message.
+
+## Security checklist (what's enforced)
+
+- RLS enabled on `profiles`, `usage_events`, `daily_rollups`
+- SELECT policies restrict every row to `auth.uid() = user_id`
+- No INSERT/UPDATE policies outside the owner's own rows
+- `views` use `WITH (security_invoker = true)` so RLS is enforced through them
+- `security definer` RPCs are `REVOKE`'d from `anon` + `authenticated` — only the service role (inside Edge Functions) can call them
+- `ingest_token` is generated via `gen_random_bytes(32)`, stored hex, rotatable
+- No `service_role` key is ever shipped to the browser or the extension
+- Extension stores its token in VS Code `SecretStorage` (OS keychain), never in `settings.json`
+- Local HTTP ingest binds to `127.0.0.1` only, rejects non-loopback requests
+
+## Self-hosted is free
+
+Everything in this repo runs on Supabase's free tier:
+- 500 MB Postgres, 50k monthly auth users, 2M Edge Function invocations/month
+- No paid providers — the extension computes token costs client-side from a local pricing table in `packages/shared/src/pricing.ts`
+
+## Distribution
+
+- **Clone the repo** — the recommended path for now
+- **Install the extension**:
+  - VS Code Marketplace: (TODO — publish with `vsce publish`)
+  - Cursor: same `.vsix` as VS Code (Cursor reuses the VS Code extension API)
+- **Website extension**: deploy `apps/web` to Vercel or any Next.js host;
+  the extension just needs your `SUPABASE_URL` and the user's ingest token.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
