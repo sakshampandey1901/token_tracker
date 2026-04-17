@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import type { ApiClient } from "./api-client";
 import type { StatusBar } from "./status-bar";
 import type { LlmProvider } from "@token-tracker/shared";
+import { openBrowserPair } from "./pair";
+import { DEFAULTS } from "./defaults";
 
 interface Deps {
   api: ApiClient;
@@ -12,16 +14,19 @@ interface Deps {
 
 export function registerCommands(ctx: vscode.ExtensionContext, deps: Deps) {
   ctx.subscriptions.push(
-    vscode.commands.registerCommand("tokenTracker.signIn", () => signIn(ctx, deps)),
-    vscode.commands.registerCommand("tokenTracker.signOut", () => signOut(ctx, deps)),
+    vscode.commands.registerCommand("tokenTracker.signIn",        () => openBrowserPair()),
+    vscode.commands.registerCommand("tokenTracker.signInManual",  () => signInManual(ctx, deps)),
+    vscode.commands.registerCommand("tokenTracker.signOut",       () => signOut(ctx, deps)),
     vscode.commands.registerCommand("tokenTracker.openDashboard", () => openDashboard()),
-    vscode.commands.registerCommand("tokenTracker.refresh", () => deps.status.refreshNow()),
-    vscode.commands.registerCommand("tokenTracker.reportUsage", (raw) => reportUsage(deps.api, raw)),
+    vscode.commands.registerCommand("tokenTracker.refresh",       () => deps.status.refreshNow()),
+    vscode.commands.registerCommand("tokenTracker.reportUsage",   (raw) => reportUsage(deps.api, raw)),
   );
 }
 
-async function signIn(ctx: vscode.ExtensionContext, deps: Deps) {
-  const urlCurrent = String(vscode.workspace.getConfiguration("tokenTracker").get("supabaseUrl") ?? "");
+async function signInManual(ctx: vscode.ExtensionContext, deps: Deps) {
+  const urlCurrent =
+    String(vscode.workspace.getConfiguration("tokenTracker").get("supabaseUrl") ?? "") ||
+    DEFAULTS.supabaseUrl;
   const url = await vscode.window.showInputBox({
     prompt: "Supabase project URL",
     value: urlCurrent || "https://YOUR-PROJECT.supabase.co",
@@ -55,9 +60,10 @@ async function signOut(ctx: vscode.ExtensionContext, deps: Deps) {
 }
 
 function openDashboard() {
-  const url = String(
-    vscode.workspace.getConfiguration("tokenTracker").get("dashboardUrl") ?? "http://localhost:3000",
-  );
+  const url =
+    String(vscode.workspace.getConfiguration("tokenTracker").get("dashboardUrl") || "").trim() ||
+    DEFAULTS.dashboardUrl ||
+    "http://localhost:3000";
   void vscode.env.openExternal(vscode.Uri.parse(url));
 }
 

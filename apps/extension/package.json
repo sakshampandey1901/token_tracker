@@ -12,7 +12,8 @@
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      { "command": "tokenTracker.signIn",        "title": "Token Tracker: Sign in (paste ingest token)" },
+      { "command": "tokenTracker.signIn",        "title": "Token Tracker: Sign in (via browser)" },
+      { "command": "tokenTracker.signInManual",  "title": "Token Tracker: Sign in manually (paste token)" },
       { "command": "tokenTracker.signOut",       "title": "Token Tracker: Sign out" },
       { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard" },
       { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh now" },
@@ -51,8 +52,8 @@
     }
   },
   "scripts": {
-    "build":    "esbuild ./src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=./dist/extension.js --minify",
-    "watch":    "esbuild ./src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=./dist/extension.js --sourcemap --watch",
+    "build":    "node esbuild.config.mjs",
+    "watch":    "node esbuild.config.mjs --watch",
     "typecheck":"tsc --noEmit",
     "package":  "pnpm run build && vsce package --no-dependencies -o token-tracker.vsix",
     "lint":     "echo \"(no lint configured)\""

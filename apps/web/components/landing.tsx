@@ -30,27 +30,34 @@ export function Landing({ mode }: { mode: "login" | "setup" }) {
           and catch runaway spend before your quota does.
         </p>
         {mode === "login" ? (
-          <div className="mt-8 flex justify-center gap-3">
+          <div className="mt-8 flex justify-center gap-3 flex-wrap">
             <Link
               href="/login"
               className="rounded-lg bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent/90"
             >
               Get started
             </Link>
-            <a
-              href="https://github.com/your-org/token-tracker#readme"
+            <Link
+              href="/demo"
               className="rounded-lg border border-border px-5 py-3 text-sm font-medium hover:bg-surface"
             >
-              Read the docs
-            </a>
+              View demo dashboard
+            </Link>
           </div>
         ) : (
           <div className="mt-8 inline-flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-6 text-left">
             <p className="text-sm text-muted">
-              Missing <code className="text-fg">NEXT_PUBLIC_SUPABASE_URL</code> /{" "}
-              <code className="text-fg">NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>.
+              Supabase env vars aren&apos;t set yet. You can still preview the UI.
             </p>
-            <pre className="rounded-lg bg-bg p-3 text-xs text-fg border border-border">
+            <div className="flex gap-2">
+              <Link
+                href="/demo"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+              >
+                Open demo dashboard
+              </Link>
+            </div>
+            <pre className="mt-2 rounded-lg bg-bg p-3 text-xs text-fg border border-border">
 cp .env.example apps/web/.env.local
 # then fill in values from https://app.supabase.com
             </pre>

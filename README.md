@@ -24,7 +24,53 @@
 
 ---
 
-## Quick start (self-host, ~5 minutes)
+## For end users — one click
+
+If someone has already deployed an instance for you:
+
+1. Install the extension from the VS Code Marketplace (or `cursor --install-extension token-tracker.vsix`)
+2. Click the `⏺ Token Tracker: sign in` item in the status bar
+3. A browser tab opens — sign in with GitHub or Google
+4. Click **Open VS Code** (or **Open Cursor**) on the pair screen
+5. Status bar updates to `⏺ 0 / 100K`. Done.
+
+The extension never asks you for a URL or a token — those are baked into the
+build. A one-time pairing code (expires in 5 min, consumed on first use) is
+the only thing that travels between the browser and your editor.
+
+---
+
+## For operators — deploy once, then share
+
+### A. Hosting checklist
+
+```bash
+# 1. Create a Supabase project and apply the schema
+supabase link --project-ref <ref>
+supabase db push
+supabase functions deploy ingest status rotate-token
+
+# 2. Deploy the dashboard (Vercel in this example)
+cd apps/web
+vercel link && vercel env add NEXT_PUBLIC_SUPABASE_URL production
+                vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production
+                vercel env add SUPABASE_SERVICE_ROLE_KEY production   # server-only
+vercel --prod   # -> https://tokentracker.example.com
+
+# 3. Ship an extension pointing at your instance
+cd ../extension
+TT_DASHBOARD_URL=https://tokentracker.example.com \
+TT_SUPABASE_URL=https://<ref>.supabase.co \
+TT_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxx \
+pnpm package
+# -> token-tracker.vsix  (distribute this)
+```
+
+End users who install that VSIX get the one-click flow above — no settings to fill in.
+
+---
+
+## Self-host from source (~5 minutes)
 
 ### Prereqs
 - Node ≥ 18.18, `pnpm` ≥ 9 (`npm i -g pnpm`)
