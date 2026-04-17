@@ -1,5 +1,5 @@
 import * as http from "http";
-import type { ApiClient } from "./api-client";
+import type { EventStore } from "./store";
 import type { LlmProvider } from "@token-tracker/shared";
 
 export interface LocalServer {
@@ -8,17 +8,13 @@ export interface LocalServer {
 
 /**
  * Starts a loopback-only HTTP server that other tools on the same machine
- * can POST events to without knowing anything about Supabase.
- *
- * Security: bound to 127.0.0.1 (not 0.0.0.0). Any process running as the
- * same user could reach it — which is already true for env vars and files,
- * so we don't add extra auth here.
+ * can POST events to. No auth — the socket is bound to 127.0.0.1, and any
+ * process running as the same user could already read the store file on disk.
  */
-export async function startLocalServer(port: number, api: ApiClient): Promise<LocalServer> {
+export async function startLocalServer(port: number, store: EventStore): Promise<LocalServer> {
   const server = http.createServer(async (req, res) => {
-    // Only accept loopback. Node already binds to 127.0.0.1, but double-check.
     const remote = req.socket.remoteAddress ?? "";
-    if (!remote.startsWith("127.") && remote !== "::1") {
+    if (!remote.startsWith("127.") && remote !== "::1" && remote !== "::ffff:127.0.0.1") {
       res.statusCode = 403;
       res.end("forbidden");
       return;
@@ -26,7 +22,7 @@ export async function startLocalServer(port: number, api: ApiClient): Promise<Lo
 
     if (req.method === "GET" && req.url === "/healthz") {
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ ok: true, configured: await api.isConfigured() }));
+      res.end(JSON.stringify({ ok: true, events: store.all().length }));
       return;
     }
 
@@ -46,7 +42,7 @@ export async function startLocalServer(port: number, api: ApiClient): Promise<Lo
           res.end(JSON.stringify({ error: "missing_fields" }));
           return;
         }
-        const result = await api.report({
+        const ev = await store.record({
           provider: raw.provider as LlmProvider,
           model: String(raw.model),
           input_tokens: Number(raw.input_tokens ?? 0),
@@ -58,7 +54,7 @@ export async function startLocalServer(port: number, api: ApiClient): Promise<Lo
           occurred_at: raw.occurred_at,
         });
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify(result ?? { error: "not_configured" }));
+        res.end(JSON.stringify(ev ? { accepted: 1, event: ev } : { accepted: 0, reason: "duplicate" }));
       } catch (err) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: "invalid_json", detail: String(err) }));

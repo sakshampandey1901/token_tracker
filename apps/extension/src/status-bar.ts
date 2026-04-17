@@ -1,63 +1,64 @@
 import * as vscode from "vscode";
-import type { ApiClient } from "./api-client";
+import type { EventStore } from "./store";
 
 interface Opts {
-  getPollInterval: () => number;
-  getDashboardUrl: () => string;
+  getDailyLimit: () => number;
 }
 
 export class StatusBar implements vscode.Disposable {
   private item: vscode.StatusBarItem;
-  private timer: NodeJS.Timeout | null = null;
+  private sub: vscode.Disposable;
 
-  constructor(private readonly api: ApiClient, private readonly opts: Opts) {
+  constructor(private readonly store: EventStore, private readonly opts: Opts) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.item.command = "tokenTracker.openDashboard";
-    this.item.text = "$(graph) Token Tracker";
-    this.item.tooltip = "Sign in to start tracking";
     this.item.show();
+    this.render();
+    this.sub = this.store.onChange(() => this.render());
   }
 
-  start() {
-    this.restart();
-  }
+  /** Force a re-render (e.g. after a setting change). */
+  render() {
+    const limit = Math.max(0, this.opts.getDailyLimit());
+    const snap = this.store.snapshot(limit);
+    const used = snap.window_24h.total_tokens;
+    const pct  = limit > 0 ? (used / limit) * 100 : 0;
 
-  restart() {
-    if (this.timer) clearInterval(this.timer);
-    const tick = () => void this.refreshNow();
-    this.timer = setInterval(tick, this.opts.getPollInterval());
-    tick();
-  }
+    const icon =
+      limit === 0          ? "$(pulse)" :
+      pct   >= 95          ? "$(error)" :
+      pct   >= 80          ? "$(warning)" :
+                             "$(graph)";
 
-  async refreshNow() {
-    if (!(await this.api.isConfigured())) {
-      this.item.text = "$(graph) Token Tracker: sign in";
-      this.item.tooltip = "Run 'Token Tracker: Sign in' to connect.";
-      this.item.backgroundColor = undefined;
-      return;
-    }
-    const s = await this.api.getStatus();
-    if (!s) {
-      this.item.text = "$(warning) Token Tracker: offline";
-      this.item.tooltip = "Could not reach Supabase. Check network / URL.";
-      this.item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
-      return;
-    }
-    const pct = s.daily_limit > 0 ? (s.total_tokens_24h / s.daily_limit) * 100 : 0;
-    const icon = pct >= 95 ? "$(error)" : pct >= 80 ? "$(warning)" : "$(pulse)";
-    this.item.text = `${icon} ${fmt(s.total_tokens_24h)} / ${fmt(s.daily_limit)}`;
-    this.item.tooltip = new vscode.MarkdownString(
+    this.item.text =
+      limit > 0
+        ? `${icon} ${fmt(used)} / ${fmt(limit)}`
+        : `${icon} ${fmt(used)} tokens (24h)`;
+
+    const delta = snap.this_week.total_tokens - snap.last_week.total_tokens;
+    const deltaStr =
+      snap.last_week.total_tokens === 0
+        ? "—"
+        : `${delta >= 0 ? "+" : ""}${((delta / Math.max(1, snap.last_week.total_tokens)) * 100).toFixed(1)}%`;
+
+    const md = new vscode.MarkdownString(
       [
-        `**Token Tracker** — ${s.tier}`,
+        `**Token Tracker** — local only`,
         ``,
-        `- 24h: \`${s.total_tokens_24h.toLocaleString()}\` / \`${s.daily_limit.toLocaleString()}\` (${pct.toFixed(1)}%)`,
-        `- cost 24h: \`$${s.cost_usd_24h.toFixed(4)}\``,
-        `- events 24h: \`${s.event_count_24h}\``,
-        `- this week: \`${s.this_week_tokens.toLocaleString()}\` vs last \`${s.last_week_tokens.toLocaleString()}\``,
+        limit > 0
+          ? `- 24h: \`${used.toLocaleString()}\` / \`${limit.toLocaleString()}\` (${pct.toFixed(1)}%)`
+          : `- 24h: \`${used.toLocaleString()}\` tokens`,
+        `- cost 24h: \`$${snap.window_24h.cost_usd.toFixed(4)}\``,
+        `- events 24h: \`${snap.window_24h.event_count}\``,
+        `- this week: \`${snap.this_week.total_tokens.toLocaleString()}\` vs last \`${snap.last_week.total_tokens.toLocaleString()}\` (${deltaStr})`,
         ``,
-        `[Open dashboard](${this.opts.getDashboardUrl()})`,
+        `[Open dashboard](command:tokenTracker.openDashboard)`,
       ].join("\n"),
+      true,
     );
+    md.isTrusted = true;
+    this.item.tooltip = md;
+
     this.item.backgroundColor =
       pct >= 95
         ? new vscode.ThemeColor("statusBarItem.errorBackground")
@@ -67,7 +68,7 @@ export class StatusBar implements vscode.Disposable {
   }
 
   dispose() {
-    if (this.timer) clearInterval(this.timer);
+    this.sub.dispose();
     this.item.dispose();
   }
 }
