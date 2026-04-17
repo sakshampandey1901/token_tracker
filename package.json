@@ -5,10 +5,6 @@
   "description": "Free, secure, real-time LLM token usage tracker with dashboard + VS Code/Cursor extension.",
   "license": "MIT",
   "packageManager": "pnpm@9.12.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "dev:web": "pnpm --filter @token-tracker/web dev",
     "dev:ext": "pnpm --filter @token-tracker/extension watch",
