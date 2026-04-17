@@ -163,6 +163,7 @@ Two complementary mechanisms, each appropriate for where it runs:
 | -------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Web dashboard  | Supabase Auth (OAuth or email magic link) with SSR cookie      | Browser sessions, supports RLS using `auth.uid()`                                     |
 | Extension / CLI| Per-user, rotatable `ingest_token` (hex, stored in SecretStorage) | No OAuth round-trip from an IDE; rotatable if leaked; validated server-side in Edge Functions |
+| Browser → editor handoff | One-time `pairing_code` (expires 5 min, consumed once) | Lets the user sign in on the website and silently install the `ingest_token` into the editor without copy/paste |
 
 `ingest_token` is **write-only** from the extension's perspective — it authorizes
 inserts into `usage_events`. All reads still go through the dashboard's
