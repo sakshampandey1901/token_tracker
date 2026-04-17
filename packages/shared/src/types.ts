@@ -6,23 +6,13 @@ export type LlmProvider =
   | "cursor"
   | "custom";
 
-export type TierPlan = "free" | "pro" | "team" | "enterprise";
-
-export interface Profile {
-  id: string;
-  email: string;
-  display_name: string | null;
-  tier: TierPlan;
-  daily_token_limit: number;
-  monthly_token_limit: number;
-  ingest_token: string;
-  created_at: string;
-  updated_at: string;
-}
-
+/**
+ * A single usage event, as persisted in the local store.
+ * No `user_id` — this tracker is local-only.
+ */
 export interface UsageEvent {
+  /** ULID-ish unique id generated locally. */
   id: string;
-  user_id: string;
   provider: LlmProvider;
   model: string;
   input_tokens: number;
@@ -30,41 +20,20 @@ export interface UsageEvent {
   cached_tokens: number;
   total_tokens: number;
   cost_usd: number;
+  /** Free-form tag: "extension", "local-ingest", "programmatic", … */
   source: string;
+  /** ISO timestamp of when the call happened. */
   occurred_at: string;
+  /** ISO timestamp of when we recorded it. */
+  recorded_at: string;
+  /** Caller-supplied id used for local de-duplication. */
   client_event_id: string | null;
-  created_at: string;
 }
 
-export interface DailyRollup {
-  user_id: string;
-  day: string; // YYYY-MM-DD
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens: number;
-  cost_usd: number;
-  updated_at: string;
-}
-
-export interface UsageLive24h {
-  user_id: string;
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens: number;
-  cost_usd: number;
-  event_count: number;
-}
-
-export interface WeeklyCompare {
-  user_id: string;
-  this_week_tokens: number;
-  last_week_tokens: number;
-  this_week_cost: number;
-  last_week_cost: number;
-}
-
+/**
+ * Inbound event shape accepted by the extension (programmatic + HTTP).
+ * Missing fields are filled in with defaults.
+ */
 export interface IngestEvent {
   provider: LlmProvider;
   model: string;
@@ -73,26 +42,44 @@ export interface IngestEvent {
   cached_tokens?: number;
   cost_usd?: number;
   source?: string;
-  client_event_id: string;
+  client_event_id?: string;
   occurred_at?: string;
 }
 
-export interface IngestPayload {
-  ingest_token: string;
-  events: IngestEvent[];
+export interface AggregateWindow {
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  cost_usd: number;
+  event_count: number;
 }
 
-export interface IngestResponse {
-  accepted: number;
-  errors?: Array<{ client_event_id: string; error: string }>;
+export interface DailyBucket extends AggregateWindow {
+  /** YYYY-MM-DD, local timezone. */
+  day: string;
 }
 
-export const TIER_DEFAULTS: Record<
-  TierPlan,
-  { daily_token_limit: number; monthly_token_limit: number; label: string; color: string }
-> = {
-  free:       { daily_token_limit:   100_000, monthly_token_limit:   2_000_000, label: "Free",       color: "#6366f1" },
-  pro:        { daily_token_limit: 1_000_000, monthly_token_limit:  25_000_000, label: "Pro",        color: "#22c55e" },
-  team:       { daily_token_limit: 5_000_000, monthly_token_limit: 150_000_000, label: "Team",       color: "#f59e0b" },
-  enterprise: { daily_token_limit: Number.MAX_SAFE_INTEGER, monthly_token_limit: Number.MAX_SAFE_INTEGER, label: "Enterprise", color: "#ef4444" },
-};
+export interface ProviderBreakdown extends AggregateWindow {
+  provider: LlmProvider;
+}
+
+/**
+ * Snapshot the status bar and dashboard read from.
+ * Everything here is derived from the local event store.
+ */
+export interface UsageSnapshot {
+  daily_limit: number;
+  window_24h: AggregateWindow;
+  this_week: AggregateWindow;
+  last_week: AggregateWindow;
+  last_7_days: DailyBucket[];
+  by_provider_24h: ProviderBreakdown[];
+  recent: UsageEvent[];
+}
+
+/**
+ * Default daily token limit for a new install.
+ * Overridable via the `tokenTracker.dailyTokenLimit` setting.
+ */
+export const DEFAULT_DAILY_TOKEN_LIMIT = 1_000_000;

@@ -31,3 +31,4 @@ pnpm-debug.log*
 supabase/.branches/
 supabase/.temp/
 supabase/.env
+.mcp.json
