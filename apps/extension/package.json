@@ -1,7 +1,7 @@
 {
   "name": "@token-tracker/extension",
   "displayName": "Token Tracker",
-  "description": "Free, real-time LLM token usage tracker. Works in VS Code and Cursor.",
+  "description": "Free, local-only LLM token usage tracker. Works in VS Code and Cursor.",
   "version": "0.1.0",
   "publisher": "token-tracker",
   "private": true,
@@ -12,31 +12,20 @@
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      { "command": "tokenTracker.signIn",        "title": "Token Tracker: Sign in (via browser)" },
-      { "command": "tokenTracker.signInManual",  "title": "Token Tracker: Sign in manually (paste token)" },
-      { "command": "tokenTracker.signOut",       "title": "Token Tracker: Sign out" },
       { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard" },
-      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh now" },
-      { "command": "tokenTracker.reportUsage",   "title": "Token Tracker: Report usage event (programmatic)" }
+      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh status bar" },
+      { "command": "tokenTracker.reportUsage",   "title": "Token Tracker: Report usage event (programmatic)" },
+      { "command": "tokenTracker.exportEvents",  "title": "Token Tracker: Export events to JSON" },
+      { "command": "tokenTracker.clearEvents",   "title": "Token Tracker: Clear event history" }
     ],
     "configuration": {
       "title": "Token Tracker",
       "properties": {
-        "tokenTracker.supabaseUrl": {
-          "type": "string",
-          "default": "",
-          "description": "Supabase project URL (e.g. https://xxx.supabase.co). Set by Sign in."
-        },
-        "tokenTracker.dashboardUrl": {
-          "type": "string",
-          "default": "http://localhost:3000",
-          "description": "Where 'Open dashboard' points to."
-        },
-        "tokenTracker.pollIntervalSeconds": {
+        "tokenTracker.dailyTokenLimit": {
           "type": "number",
-          "default": 30,
-          "minimum": 10,
-          "description": "How often the status bar refreshes (10s minimum)."
+          "default": 1000000,
+          "minimum": 0,
+          "description": "Daily token budget used by the status bar meter. Set to 0 to hide the meter."
         },
         "tokenTracker.localIngestPort": {
           "type": "number",
@@ -46,7 +35,7 @@
         "tokenTracker.enableLocalIngest": {
           "type": "boolean",
           "default": true,
-          "description": "Enable local loopback HTTP endpoint for usage ingest."
+          "description": "Enable the local loopback HTTP endpoint for usage ingest."
         }
       }
     }

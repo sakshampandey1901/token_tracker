@@ -6,8 +6,6 @@ node_modules/
 dist/
 build/
 out/
-.next/
-.turbo/
 *.vsix
 
 # env + secrets
@@ -26,9 +24,3 @@ pnpm-debug.log*
 .DS_Store
 .vscode-test/
 .idea/
-
-# supabase
-supabase/.branches/
-supabase/.temp/
-supabase/.env
-.mcp.json
