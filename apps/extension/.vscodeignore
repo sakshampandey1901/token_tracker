@@ -1,0 +1,7 @@
+.vscode/**
+src/**
+tsconfig.json
+*.vsix
+node_modules/**
+!node_modules/@token-tracker/shared/**
+.gitignore

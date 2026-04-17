@@ -1,0 +1,71 @@
+{
+  "name": "@token-tracker/extension",
+  "displayName": "Token Tracker",
+  "description": "Free, real-time LLM token usage tracker. Works in VS Code and Cursor.",
+  "version": "0.1.0",
+  "publisher": "token-tracker",
+  "private": true,
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Visualization"],
+  "icon": "resources/icon.png",
+  "main": "./dist/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "tokenTracker.signIn",        "title": "Token Tracker: Sign in (paste ingest token)" },
+      { "command": "tokenTracker.signOut",       "title": "Token Tracker: Sign out" },
+      { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard" },
+      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh now" },
+      { "command": "tokenTracker.reportUsage",   "title": "Token Tracker: Report usage event (programmatic)" }
+    ],
+    "configuration": {
+      "title": "Token Tracker",
+      "properties": {
+        "tokenTracker.supabaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Supabase project URL (e.g. https://xxx.supabase.co). Set by Sign in."
+        },
+        "tokenTracker.dashboardUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Where 'Open dashboard' points to."
+        },
+        "tokenTracker.pollIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "description": "How often the status bar refreshes (10s minimum)."
+        },
+        "tokenTracker.localIngestPort": {
+          "type": "number",
+          "default": 58417,
+          "description": "Local HTTP port where other tools can POST usage events (127.0.0.1 only)."
+        },
+        "tokenTracker.enableLocalIngest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local loopback HTTP endpoint for usage ingest."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build":    "esbuild ./src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=./dist/extension.js --minify",
+    "watch":    "esbuild ./src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=./dist/extension.js --sourcemap --watch",
+    "typecheck":"tsc --noEmit",
+    "package":  "pnpm run build && vsce package --no-dependencies -o token-tracker.vsix",
+    "lint":     "echo \"(no lint configured)\""
+  },
+  "dependencies": {
+    "@token-tracker/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node":   "^20.16.11",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce":  "^3.1.1",
+    "esbuild":       "^0.24.0",
+    "typescript":    "^5.5.4"
+  }
+}
