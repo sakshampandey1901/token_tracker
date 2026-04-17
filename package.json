@@ -1,0 +1,32 @@
+{
+  "name": "token-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Free, secure, real-time LLM token usage tracker with dashboard + VS Code/Cursor extension.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "pnpm --filter @token-tracker/web dev",
+    "dev:ext": "pnpm --filter @token-tracker/extension watch",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter @token-tracker/web build",
+    "build:ext": "pnpm --filter @token-tracker/extension package",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset --local",
+    "db:push": "supabase db push",
+    "db:gen-types": "supabase gen types typescript --local > packages/shared/src/database.types.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.18.0",
+    "pnpm": ">=9.0.0"
+  }
+}
