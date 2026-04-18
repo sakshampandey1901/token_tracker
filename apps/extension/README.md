@@ -10,7 +10,7 @@ No backend, no account, no telemetry.
 
 ```bash
 pnpm install
-pnpm --filter @token-tracker/extension package
+pnpm --filter token-tracker package
 
 code   --install-extension apps/extension/token-tracker.vsix
 # or
@@ -21,7 +21,7 @@ cursor --install-extension apps/extension/token-tracker.vsix
 
 ```bash
 pnpm install
-pnpm --filter @token-tracker/extension build
+pnpm --filter token-tracker build
 # then in VS Code / Cursor: "Developer: Install Extension from Location…"
 # and pick this folder.
 ```
@@ -29,7 +29,7 @@ pnpm --filter @token-tracker/extension build
 Or run the watcher and launch the extension host from VS Code's **Run and Debug** panel:
 
 ```bash
-pnpm --filter @token-tracker/extension watch
+pnpm --filter token-tracker watch
 ```
 
 ## Usage

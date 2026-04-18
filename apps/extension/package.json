@@ -1,5 +1,5 @@
 {
-  "name": "@token-tracker/extension",
+  "name": "token-tracker",
   "displayName": "Token Tracker",
   "description": "Free, local-only LLM token usage tracker. Works in VS Code and Cursor.",
   "version": "0.1.0",
@@ -11,9 +11,29 @@
   "main": "./dist/extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tokenTracker",
+          "title": "Token Tracker",
+          "icon": "media/token-tracker.svg"
+        }
+      ]
+    },
+    "views": {
+      "tokenTracker": [
+        {
+          "type": "webview",
+          "id": "tokenTracker.sidebar",
+          "name": "Dashboard",
+          "contextualTitle": "Token Tracker"
+        }
+      ]
+    },
     "commands": [
-      { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard" },
-      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh status bar" },
+      { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard in editor" },
+      { "command": "tokenTracker.focusSidebar",  "title": "Token Tracker: Focus sidebar" },
+      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh" },
       { "command": "tokenTracker.reportUsage",   "title": "Token Tracker: Report usage event (programmatic)" },
       { "command": "tokenTracker.exportEvents",  "title": "Token Tracker: Export events to JSON" },
       { "command": "tokenTracker.clearEvents",   "title": "Token Tracker: Clear event history" }
@@ -36,6 +56,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable the local loopback HTTP endpoint for usage ingest."
+        },
+        "tokenTracker.claudeCode.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch ~/.claude/projects/**/*.jsonl and auto-record Claude Code CLI usage."
         }
       }
     }

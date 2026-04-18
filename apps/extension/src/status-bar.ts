@@ -11,7 +11,7 @@ export class StatusBar implements vscode.Disposable {
 
   constructor(private readonly store: EventStore, private readonly opts: Opts) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    this.item.command = "tokenTracker.openDashboard";
+    this.item.command = "tokenTracker.focusSidebar";
     this.item.show();
     this.render();
     this.sub = this.store.onChange(() => this.render());
@@ -52,7 +52,7 @@ export class StatusBar implements vscode.Disposable {
         `- events 24h: \`${snap.window_24h.event_count}\``,
         `- this week: \`${snap.this_week.total_tokens.toLocaleString()}\` vs last \`${snap.last_week.total_tokens.toLocaleString()}\` (${deltaStr})`,
         ``,
-        `[Open dashboard](command:tokenTracker.openDashboard)`,
+        `[Open sidebar](command:tokenTracker.focusSidebar) · [Open full dashboard](command:tokenTracker.openDashboard)`,
       ].join("\n"),
       true,
     );

@@ -6,10 +6,10 @@
   "license": "MIT",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
-    "dev": "pnpm --filter @token-tracker/extension watch",
+    "dev": "pnpm --filter token-tracker watch",
     "build": "pnpm -r build",
-    "build:ext": "pnpm --filter @token-tracker/extension build",
-    "package:ext": "pnpm --filter @token-tracker/extension package",
+    "build:ext": "pnpm --filter token-tracker build",
+    "package:ext": "pnpm --filter token-tracker package",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

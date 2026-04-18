@@ -15,6 +15,9 @@ export function registerCommands(ctx: vscode.ExtensionContext, deps: Deps) {
     vscode.commands.registerCommand("tokenTracker.openDashboard", () =>
       DashboardPanel.show(deps.store, deps.getDailyLimit),
     ),
+    vscode.commands.registerCommand("tokenTracker.focusSidebar", () =>
+      vscode.commands.executeCommand("tokenTracker.sidebar.focus"),
+    ),
     vscode.commands.registerCommand("tokenTracker.refresh", () => deps.status.render()),
     vscode.commands.registerCommand("tokenTracker.reportUsage", (raw) => reportUsage(deps.store, raw)),
     vscode.commands.registerCommand("tokenTracker.exportEvents", () => exportEvents(deps.store)),

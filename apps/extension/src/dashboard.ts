@@ -40,7 +40,7 @@ export class DashboardPanel {
 
   private refresh() {
     const snap = this.store.snapshot(Math.max(0, this.getDailyLimit()));
-    this.panel.webview.html = render(snap);
+    this.panel.webview.html = renderDashboardHtml(snap, { layout: "full" });
   }
 
   private dispose() {
@@ -53,7 +53,15 @@ export class DashboardPanel {
   }
 }
 
-function render(snap: UsageSnapshot): string {
+export interface RenderOptions {
+  layout: "full" | "compact";
+}
+
+export function renderDashboardHtml(
+  snap: UsageSnapshot,
+  opts: RenderOptions = { layout: "full" },
+): string {
+  const compact = opts.layout === "compact";
   const pct =
     snap.daily_limit > 0
       ? Math.min(100, (snap.window_24h.total_tokens / snap.daily_limit) * 100)
@@ -85,11 +93,20 @@ function render(snap: UsageSnapshot): string {
     })
     .join("");
 
-  const providerRows = snap.by_provider_24h
+  const providers = compact ? snap.by_provider_24h.slice(0, 4) : snap.by_provider_24h;
+  const providerRows = providers
     .map((p) => {
       const share = snap.window_24h.total_tokens > 0
         ? (p.total_tokens / snap.window_24h.total_tokens) * 100
         : 0;
+      if (compact) {
+        return `
+      <tr>
+        <td>${esc(p.provider)}</td>
+        <td class="num">${p.total_tokens.toLocaleString()}</td>
+        <td class="num">${share.toFixed(0)}%</td>
+      </tr>`;
+      }
       return `
       <tr>
         <td>${esc(p.provider)}</td>
@@ -99,11 +116,20 @@ function render(snap: UsageSnapshot): string {
         <td class="num">${share.toFixed(1)}%</td>
       </tr>`;
     })
-    .join("") || `<tr><td colspan="5" class="muted">No events in the last 24 hours.</td></tr>`;
+    .join("") || `<tr><td colspan="${compact ? 3 : 5}" class="muted">No events in the last 24 hours.</td></tr>`;
 
-  const feedRows = snap.recent
+  const recent = compact ? snap.recent.slice(0, 8) : snap.recent;
+  const feedRows = recent
     .map((ev) => {
       const when = new Date(ev.occurred_at);
+      if (compact) {
+        return `
+      <tr>
+        <td class="muted">${esc(when.toLocaleTimeString())}</td>
+        <td class="mono">${esc(ev.provider)}</td>
+        <td class="num">${ev.total_tokens.toLocaleString()}</td>
+      </tr>`;
+      }
       return `
       <tr>
         <td class="muted">${esc(when.toLocaleTimeString())}</td>
@@ -116,7 +142,7 @@ function render(snap: UsageSnapshot): string {
         <td class="muted">${esc(ev.source)}</td>
       </tr>`;
     })
-    .join("") || `<tr><td colspan="8" class="muted">Waiting for events… POST to http://127.0.0.1 to add one.</td></tr>`;
+    .join("") || `<tr><td colspan="${compact ? 3 : 8}" class="muted">Waiting for events… POST to http://127.0.0.1 to add one.</td></tr>`;
 
   return /* html */ `
 <!doctype html>
@@ -129,23 +155,22 @@ function render(snap: UsageSnapshot): string {
       font-family: var(--vscode-font-family);
       color: var(--vscode-foreground);
       background: var(--vscode-editor-background);
-      padding: 24px;
-      max-width: 1000px;
-      margin: 0 auto;
+      padding: ${compact ? "10px 12px" : "24px"};
+      ${compact ? "" : "max-width: 1000px; margin: 0 auto;"}
     }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    h2 { font-size: 13px; margin: 24px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vscode-descriptionForeground); }
-    .subtitle { color: var(--vscode-descriptionForeground); margin-bottom: 24px; font-size: 12px; }
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 8px; }
+    h1 { font-size: ${compact ? "13px" : "18px"}; margin: 0 0 4px; }
+    h2 { font-size: ${compact ? "10px" : "13px"}; margin: ${compact ? "16px 0 6px" : "24px 0 8px"}; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vscode-descriptionForeground); }
+    .subtitle { color: var(--vscode-descriptionForeground); margin-bottom: ${compact ? "12px" : "24px"}; font-size: ${compact ? "10px" : "12px"}; }
+    .grid { display: grid; grid-template-columns: ${compact ? "1fr" : "repeat(3, minmax(0, 1fr))"}; gap: ${compact ? "8px" : "16px"}; margin-bottom: 8px; }
     .card {
       border: 1px solid var(--vscode-panel-border);
       border-radius: 6px;
-      padding: 16px;
+      padding: ${compact ? "10px 12px" : "16px"};
       background: var(--vscode-editor-background);
     }
-    .card .label { font-size: 11px; text-transform: uppercase; color: var(--vscode-descriptionForeground); letter-spacing: 0.05em; }
-    .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
-    .card .sub   { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+    .card .label { font-size: ${compact ? "9px" : "11px"}; text-transform: uppercase; color: var(--vscode-descriptionForeground); letter-spacing: 0.05em; }
+    .card .value { font-size: ${compact ? "18px" : "24px"}; font-weight: 600; margin-top: 2px; }
+    .card .sub   { font-size: ${compact ? "10px" : "11px"}; color: var(--vscode-descriptionForeground); margin-top: 4px; }
     .meter { height: 10px; background: var(--vscode-editorWidget-background); border-radius: 5px; overflow: hidden; margin-top: 10px; }
     .meter-fill { height: 100%; background: ${meterColor}; transition: width .3s ease; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -154,9 +179,9 @@ function render(snap: UsageSnapshot): string {
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
     td.mono { font-family: var(--vscode-editor-font-family); }
     .muted { color: var(--vscode-descriptionForeground); }
-    .bars { display: flex; gap: 6px; align-items: flex-end; height: 120px; margin-top: 8px; }
-    .day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .bar-track { height: 100px; width: 100%; background: var(--vscode-editorWidget-background); border-radius: 3px; display: flex; align-items: flex-end; overflow: hidden; }
+    .bars { display: flex; gap: ${compact ? "3px" : "6px"}; align-items: flex-end; height: ${compact ? "80px" : "120px"}; margin-top: 8px; }
+    .day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+    .bar-track { height: ${compact ? "60px" : "100px"}; width: 100%; background: var(--vscode-editorWidget-background); border-radius: 3px; display: flex; align-items: flex-end; overflow: hidden; }
     .bar-fill  { width: 100%; background: var(--vscode-charts-blue, #3b82f6); border-radius: 3px 3px 0 0; min-height: 2px; }
     .day-label { font-size: 10px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
     .delta-up   { color: var(--vscode-errorForeground); }
@@ -204,19 +229,23 @@ function render(snap: UsageSnapshot): string {
 
   <h2>By provider (24h)</h2>
   <table>
-    <thead><tr><th>Provider</th><th class="num">Events</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Share</th></tr></thead>
+    <thead><tr>${
+      compact
+        ? `<th>Provider</th><th class="num">Tokens</th><th class="num">Share</th>`
+        : `<th>Provider</th><th class="num">Events</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Share</th>`
+    }</tr></thead>
     <tbody>${providerRows}</tbody>
   </table>
 
   <h2>Recent events</h2>
   <table>
-    <thead>
-      <tr>
-        <th>Time</th><th>Provider</th><th>Model</th>
-        <th class="num">In</th><th class="num">Out</th><th class="num">Total</th>
-        <th class="num">Cost</th><th>Source</th>
-      </tr>
-    </thead>
+    <thead><tr>${
+      compact
+        ? `<th>Time</th><th>Provider</th><th class="num">Tokens</th>`
+        : `<th>Time</th><th>Provider</th><th>Model</th>
+           <th class="num">In</th><th class="num">Out</th><th class="num">Total</th>
+           <th class="num">Cost</th><th>Source</th>`
+    }</tr></thead>
     <tbody>${feedRows}</tbody>
   </table>
 </body>
