@@ -1,6 +1,15 @@
 # Token Tracker
-
+> Get realtime token usage of your CLI agents (claude and codex)
 > Free, open-source, **local-only** LLM token usage tracker for VS Code and Cursor.
+
+## Dashboard
+
+Status bar + sidebar/editor views:
+
+![Token Tracker status tooltip](docs/images/dashboard-status-tooltip.png)
+
+![Token Tracker sidebar and editor dashboard](docs/images/dashboard-sidebar-editor.png)
+
 
 - **Status bar meter**: rolling 24-hour tokens vs `tokenTracker.dailyTokenLimit`
 - **Sidebar + editor dashboard**: 7-day chart, weekly comparison, per-provider table, live event feed
