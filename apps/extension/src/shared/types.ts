@@ -119,6 +119,7 @@ export interface UsageSnapshot {
   last_7_days: DailyBucket[];
   by_provider_24h: ProviderBreakdown[];
   by_source_24h: SourceBreakdown[];
+  by_source_5h: SourceBreakdown[];
   recent: UsageEvent[];
   /**
    * Pick of the most "important" snapshot across all sources, chosen by:

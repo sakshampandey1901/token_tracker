@@ -146,10 +146,12 @@ export class EventStore {
   snapshot(dailyLimit: number): UsageSnapshot {
     const now = Date.now();
     const cutoff24 = now - 24 * 60 * 60 * 1000;
+    const cutoff5h = now - 5 * 60 * 60 * 1000;
 
     const window_24h = emptyAgg();
     const by_provider: Record<string, AggregateWindow> = {};
     const by_source: Record<string, AggregateWindow> = {};
+    const by_source_5h: Record<string, AggregateWindow> = {};
     const recent: UsageEvent[] = [];
 
     for (const ev of this.events) {
@@ -164,6 +166,11 @@ export class EventStore {
         const sourceBucket = by_source[sourceKey] ?? (by_source[sourceKey] = emptyAgg());
         addTo(sourceBucket, ev);
         recent.push(ev);
+      }
+      if (t >= cutoff5h) {
+        const sourceKey = ev.source || "unknown";
+        const sourceBucket = by_source_5h[sourceKey] ?? (by_source_5h[sourceKey] = emptyAgg());
+        addTo(sourceBucket, ev);
       }
     }
 
@@ -185,6 +192,12 @@ export class EventStore {
         }))
         .sort((a, b) => b.total_tokens - a.total_tokens),
       by_source_24h: Object.entries(by_source)
+        .map(([source, agg]): SourceBreakdown => ({
+          source,
+          ...agg,
+        }))
+        .sort((a, b) => b.total_tokens - a.total_tokens),
+      by_source_5h: Object.entries(by_source_5h)
         .map(([source, agg]): SourceBreakdown => ({
           source,
           ...agg,

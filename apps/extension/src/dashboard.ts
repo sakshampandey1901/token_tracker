@@ -374,7 +374,7 @@ function renderSourceDailyBars(
   limits: SourceDailyLimits,
   _compact: boolean,
 ): string {
-  const bySource = new Map(snap.by_source_24h.map((s) => [s.source, s]));
+  const bySource = new Map(snap.by_source_5h.map((s) => [s.source, s]));
   const claude = bySource.get("claude-code")?.total_tokens ?? 0;
   const codex = bySource.get("codex")?.total_tokens ?? 0;
 
@@ -383,7 +383,7 @@ function renderSourceDailyBars(
     renderSourceDailyRow("Codex", codex, limits.codex),
   ].join("");
 
-  return `<div class="source-wrap">${rows}</div>`;
+  return `<div class="source-wrap"><div class="muted">Rolling window: last 5h</div>${rows}</div>`;
 }
 
 function renderSourceDailyRow(name: string, used: number, limit: number): string {
