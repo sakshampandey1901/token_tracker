@@ -1,6 +1,5 @@
 # Token Tracker
-> Get realtime token usage of your CLI agents (claude and codex)
-> Free, open-source, **local-only** LLM token usage tracker for VS Code and Cursor.
+> Keep track of token usage of your CLI agents while coding (claude and codex).
 
 ## Dashboard
 
