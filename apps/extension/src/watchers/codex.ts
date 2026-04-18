@@ -100,6 +100,7 @@ export class CodexWatcher implements vscode.Disposable {
   private async scanAll(opts: { backfillIfNew: boolean }): Promise<void> {
     if (this.disposed) return;
     const files = await listJsonlFiles(this.root);
+    let sawRateLimitsInTail = false;
 
     const backfillCutoff = Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000;
 
@@ -122,7 +123,8 @@ export class CodexWatcher implements vscode.Disposable {
           this.offsets[file] = { size: st.size, mtimeMs: st.mtimeMs };
           continue;
         }
-        await this.ingestTail(file, startAt, st.size);
+        const hadRateLimits = await this.ingestTail(file, startAt, st.size);
+        if (hadRateLimits) sawRateLimitsInTail = true;
         this.offsets[file] = { size: st.size, mtimeMs: st.mtimeMs };
       } catch {
         // file could have been rotated/deleted between listing and stat; ignore.
@@ -130,11 +132,21 @@ export class CodexWatcher implements vscode.Disposable {
     }
 
     await this.ctx.globalState.update(OFFSET_STATE_KEY, this.offsets);
+
+    // Fallback: if Codex rows don't contain authoritative rate_limits metadata
+    // (older/newer formats or sparse rows), publish the same observed 5h/7d
+    // snapshot style as Claude so UI still has codex source bars.
+    if (!sawRateLimitsInTail) {
+      const snap = this.store.snapshot(0).rate_limits_by_source["codex"];
+      if (!snap || !snap.authoritative) {
+        this.publishDerivedRateLimits();
+      }
+    }
   }
 
-  private async ingestTail(file: string, startAt: number, endAt: number): Promise<void> {
+  private async ingestTail(file: string, startAt: number, endAt: number): Promise<boolean> {
     const length = endAt - startAt;
-    if (length <= 0) return;
+    if (length <= 0) return false;
 
     const buf = Buffer.alloc(length);
     const fd = await fs.promises.open(file, "r");
@@ -148,20 +160,23 @@ export class CodexWatcher implements vscode.Disposable {
     const lines = text.split("\n");
     const startIdx = startAt > 0 ? 1 : 0;
     const base = path.basename(file);
+    let sawRateLimits = false;
 
     for (let i = startIdx; i < lines.length; i++) {
       const line = (lines[i] ?? "").trim();
       if (!line) continue;
       try {
-        await this.maybeRecord(base, JSON.parse(line));
+        const hadRateLimits = await this.maybeRecord(base, JSON.parse(line));
+        if (hadRateLimits) sawRateLimits = true;
       } catch {
         // malformed line — skip.
       }
     }
+    return sawRateLimits;
   }
 
-  private async maybeRecord(basename: string, row: unknown): Promise<void> {
-    if (!row || typeof row !== "object") return;
+  private async maybeRecord(basename: string, row: unknown): Promise<boolean> {
+    if (!row || typeof row !== "object") return false;
     const r = row as {
       timestamp?: string;
       type?: string;
@@ -184,7 +199,7 @@ export class CodexWatcher implements vscode.Disposable {
       };
     };
 
-    if (r.type !== "event_msg" || r.payload?.type !== "token_count") return;
+    if (r.type !== "event_msg" || r.payload?.type !== "token_count") return false;
 
     // 1) rate_limits — always update if present (most recent line wins because
     //    files are scanned oldest→newest and tail reads are in-order). When
@@ -216,14 +231,16 @@ export class CodexWatcher implements vscode.Disposable {
 
     // 2) per-turn usage.
     const usage = r.payload?.info?.last_token_usage;
-    if (!usage) return;
+    if (!usage) return Boolean(rl);
 
     const input_tokens  = num(usage.input_tokens);
     const cached_tokens = num(usage.cached_input_tokens);
     const output_tokens =
       num(usage.output_tokens) + num(usage.reasoning_output_tokens);
 
-    if (input_tokens === 0 && output_tokens === 0 && cached_tokens === 0) return;
+    if (input_tokens === 0 && output_tokens === 0 && cached_tokens === 0) {
+      return Boolean(rl);
+    }
 
     await this.store.record({
       provider: "openai",
@@ -236,6 +253,39 @@ export class CodexWatcher implements vscode.Disposable {
       source: "codex",
       client_event_id: r.timestamp ? `${basename}:${r.timestamp}` : undefined,
       occurred_at: r.timestamp,
+    });
+    return Boolean(rl);
+  }
+
+  private publishDerivedRateLimits(): void {
+    const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    const w5h = this.store.aggregateSourceWindow("codex", FIVE_HOURS_MS, now);
+    const w7d = this.store.aggregateSourceWindow("codex", SEVEN_DAYS_MS, now);
+
+    this.store.updateRateLimits({
+      source: "codex",
+      plan: null,
+      authoritative: false,
+      primary: {
+        label: "5h",
+        used_percent: null,
+        used_tokens: w5h.tokens,
+        used_messages: w5h.messages,
+        window_minutes: 300,
+        resets_at: 0,
+      },
+      secondary: {
+        label: "7d",
+        used_percent: null,
+        used_tokens: w7d.tokens,
+        used_messages: w7d.messages,
+        window_minutes: 60 * 24 * 7,
+        resets_at: 0,
+      },
+      updated_at: new Date(now).toISOString(),
     });
   }
 }

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { EventStore } from "./store";
-import { renderDashboardHtml } from "./dashboard";
+import { renderDashboardHtml, type SourceDailyLimits } from "./dashboard";
 
 /**
  * Sidebar webview that lives in the Token Tracker activity bar container.
@@ -16,6 +16,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly store: EventStore,
     private readonly getDailyLimit: () => number,
+    private readonly getSourceDailyLimits: () => SourceDailyLimits,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -44,6 +45,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   render(): void {
     if (!this.view) return;
     const snap = this.store.snapshot(Math.max(0, this.getDailyLimit()));
-    this.view.webview.html = renderDashboardHtml(snap, { layout: "compact" });
+    this.view.webview.html = renderDashboardHtml(snap, {
+      layout: "compact",
+      sourceDailyLimits: this.getSourceDailyLimits(),
+    });
   }
 }
