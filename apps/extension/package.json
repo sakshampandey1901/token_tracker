@@ -6,10 +6,17 @@
   "publisher": "token-tracker",
   "private": true,
   "license": "MIT",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other", "Visualization"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
   "main": "./dist/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -31,12 +38,30 @@
       ]
     },
     "commands": [
-      { "command": "tokenTracker.openDashboard", "title": "Token Tracker: Open dashboard in editor" },
-      { "command": "tokenTracker.focusSidebar",  "title": "Token Tracker: Focus sidebar" },
-      { "command": "tokenTracker.refresh",       "title": "Token Tracker: Refresh" },
-      { "command": "tokenTracker.reportUsage",   "title": "Token Tracker: Report usage event (programmatic)" },
-      { "command": "tokenTracker.exportEvents",  "title": "Token Tracker: Export events to JSON" },
-      { "command": "tokenTracker.clearEvents",   "title": "Token Tracker: Clear event history" }
+      {
+        "command": "tokenTracker.openDashboard",
+        "title": "Token Tracker: Open dashboard in editor"
+      },
+      {
+        "command": "tokenTracker.focusSidebar",
+        "title": "Token Tracker: Focus sidebar"
+      },
+      {
+        "command": "tokenTracker.refresh",
+        "title": "Token Tracker: Refresh"
+      },
+      {
+        "command": "tokenTracker.reportUsage",
+        "title": "Token Tracker: Report usage event (programmatic)"
+      },
+      {
+        "command": "tokenTracker.exportEvents",
+        "title": "Token Tracker: Export events to JSON"
+      },
+      {
+        "command": "tokenTracker.clearEvents",
+        "title": "Token Tracker: Clear event history"
+      }
     ],
     "configuration": {
       "title": "Token Tracker",
@@ -83,18 +108,17 @@
     }
   },
   "scripts": {
-    "build":    "node esbuild.config.mjs",
-    "watch":    "node esbuild.config.mjs --watch",
-    "typecheck":"tsc --noEmit",
-    "package":  "pnpm run build && vsce package --no-dependencies -o token-tracker.vsix",
-    "lint":     "echo \"(no lint configured)\""
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "pnpm run build && vsce package --no-dependencies -o token-tracker.vsix",
+    "lint": "echo \"(no lint configured)\""
   },
-  "dependencies": {},
   "devDependencies": {
-    "@types/node":   "^20.16.11",
+    "@types/node": "^20.16.11",
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce":  "^3.1.1",
-    "esbuild":       "^0.24.0",
-    "typescript":    "^5.5.4"
+    "@vscode/vsce": "^3.1.1",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.5.4"
   }
 }
