@@ -47,6 +47,18 @@
           "minimum": 0,
           "description": "Daily token budget used by the status bar meter. Set to 0 to hide the meter."
         },
+        "tokenTracker.dailyTokenLimitClaude": {
+          "type": "number",
+          "default": 1000000,
+          "minimum": 0,
+          "description": "Daily token budget for Claude source bars in the dashboard."
+        },
+        "tokenTracker.dailyTokenLimitCodex": {
+          "type": "number",
+          "default": 1000000,
+          "minimum": 0,
+          "description": "Daily token budget for Codex source bars in the dashboard."
+        },
         "tokenTracker.localIngestPort": {
           "type": "number",
           "default": 58417,
@@ -61,6 +73,11 @@
           "type": "boolean",
           "default": true,
           "description": "Watch ~/.claude/projects/**/*.jsonl and auto-record Claude Code CLI usage."
+        },
+        "tokenTracker.codex.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch ~/.codex/sessions/**/*.jsonl and auto-record OpenAI Codex CLI usage + rate limits."
         }
       }
     }
@@ -72,9 +89,7 @@
     "package":  "pnpm run build && vsce package --no-dependencies -o token-tracker.vsix",
     "lint":     "echo \"(no lint configured)\""
   },
-  "dependencies": {
-    "@token-tracker/shared": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node":   "^20.16.11",
     "@types/vscode": "^1.85.0",

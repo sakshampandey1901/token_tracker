@@ -13,10 +13,6 @@ importers:
         version: 5.9.3
 
   apps/extension:
-    dependencies:
-      '@token-tracker/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
     devDependencies:
       '@types/node':
         specifier: ^20.16.11
@@ -30,12 +26,6 @@ importers:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
-      typescript:
-        specifier: ^5.5.4
-        version: 5.9.3
-
-  packages/shared:
-    devDependencies:
       typescript:
         specifier: ^5.5.4
         version: 5.9.3

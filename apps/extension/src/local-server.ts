@@ -1,6 +1,6 @@
 import * as http from "http";
 import type { EventStore } from "./store";
-import type { LlmProvider } from "@token-tracker/shared";
+import type { LlmProvider } from "./shared";
 
 export interface LocalServer {
   stop(): Promise<void>;

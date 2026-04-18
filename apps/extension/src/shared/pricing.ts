@@ -32,10 +32,10 @@ export const PRICING: Catalog = {
     "mistral-small-latest": { input: 0.20, output: 0.60 },
   },
   cursor: {
-    "default": { input: 0, output: 0 },
+    default: { input: 0, output: 0 },
   },
   custom: {
-    "default": { input: 0, output: 0 },
+    default: { input: 0, output: 0 },
   },
 };
 
@@ -50,10 +50,10 @@ export function estimateCostUSD(
   const entry =
     catalog[model] ??
     catalog[Object.keys(catalog).find((k) => model.startsWith(k)) ?? ""] ??
-    catalog["default"] ??
+    catalog.default ??
     { input: 0, output: 0 };
   const c = (entry.cached ?? entry.input) * (cached_tokens / 1_000_000);
-  const i = entry.input  * (input_tokens  / 1_000_000);
+  const i = entry.input * (input_tokens / 1_000_000);
   const o = entry.output * (output_tokens / 1_000_000);
   return +(i + o + c).toFixed(6);
 }

@@ -26,6 +26,27 @@ import type { EventStore } from "../store";
  *
  * The row `uuid` is stable, so it's used as `client_event_id` for dedupe.
  * Per-file byte offsets are persisted so we don't re-ingest across reloads.
+ *
+ * ---
+ * Rate-limit derivation (Option A — observed counts, no inference):
+ *
+ * Claude Code emits zero authoritative rate-limit / plan / quota fields in
+ * local files as of CLI 2.1.87. A full sweep of ~/.claude/projects/**\/*.jsonl
+ * plus ~/.claude/*.json surfaced only:
+ *   - message.usage.service_tier = "standard"   (constant API tier tag)
+ *   - message.content[].input.{plan, limit}      (tool-call arguments)
+ *   - snapshot.trackedFileBackups["…rateLimiter.js"]  (user source file)
+ *
+ * So instead of guessing a cap (which would require inferring a plan from
+ * `message.model`, which is explicitly disallowed), after each scan cycle we
+ * aggregate the tokens + assistant-row counts we've already ingested over
+ * two rolling windows — 5h and 7d — and emit them as a RateLimitsSnapshot
+ * with `used_percent: null` and `authoritative: false`. The UI renders these
+ * as count pills rather than percentage bars.
+ *
+ * If Anthropic later ships real limit metadata in the rollout files, the
+ * parser goes inside `maybeRecord` and can simply set `used_percent` /
+ * `authoritative: true` on the same snapshot shape.
  */
 
 const OFFSET_STATE_KEY = "tokenTracker.claudeCode.offsets.v1";
@@ -117,6 +138,45 @@ export class ClaudeCodeWatcher implements vscode.Disposable {
     }
 
     await this.ctx.globalState.update(OFFSET_STATE_KEY, this.offsets);
+    this.publishDerivedRateLimits();
+  }
+
+  /**
+   * Emit a rolling 5h + 7d snapshot derived from already-ingested events.
+   * `used_percent` is deliberately null — Claude exposes no authoritative
+   * cap locally, so the UI renders these as count pills instead of bars.
+   * Safe to call even when no Claude events exist (zero-filled windows).
+   */
+  private publishDerivedRateLimits(): void {
+    const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    const w5h = this.store.aggregateSourceWindow("claude-code", FIVE_HOURS_MS, now);
+    const w7d = this.store.aggregateSourceWindow("claude-code", SEVEN_DAYS_MS, now);
+
+    this.store.updateRateLimits({
+      source: "claude-code",
+      plan: null,
+      authoritative: false,
+      primary: {
+        label: "5h",
+        used_percent: null,
+        used_tokens: w5h.tokens,
+        used_messages: w5h.messages,
+        window_minutes: 300,
+        resets_at: 0,
+      },
+      secondary: {
+        label: "7d",
+        used_percent: null,
+        used_tokens: w7d.tokens,
+        used_messages: w7d.messages,
+        window_minutes: 60 * 24 * 7,
+        resets_at: 0,
+      },
+      updated_at: new Date(now).toISOString(),
+    });
   }
 
   private async ingestTail(file: string, startAt: number, endAt: number): Promise<void> {

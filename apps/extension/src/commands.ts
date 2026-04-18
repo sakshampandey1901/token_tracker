@@ -1,19 +1,20 @@
 import * as vscode from "vscode";
 import type { EventStore } from "./store";
 import type { StatusBar } from "./status-bar";
-import type { LlmProvider } from "@token-tracker/shared";
-import { DashboardPanel } from "./dashboard";
+import type { LlmProvider } from "./shared";
+import { DashboardPanel, type SourceDailyLimits } from "./dashboard";
 
 interface Deps {
   store: EventStore;
   status: StatusBar;
   getDailyLimit: () => number;
+  getSourceDailyLimits: () => SourceDailyLimits;
 }
 
 export function registerCommands(ctx: vscode.ExtensionContext, deps: Deps) {
   ctx.subscriptions.push(
     vscode.commands.registerCommand("tokenTracker.openDashboard", () =>
-      DashboardPanel.show(deps.store, deps.getDailyLimit),
+      DashboardPanel.show(deps.store, deps.getDailyLimit, deps.getSourceDailyLimits),
     ),
     vscode.commands.registerCommand("tokenTracker.focusSidebar", () =>
       vscode.commands.executeCommand("tokenTracker.sidebar.focus"),

@@ -1,11 +1,16 @@
 import * as vscode from "vscode";
-import { DEFAULT_DAILY_TOKEN_LIMIT } from "@token-tracker/shared";
+import {
+  DEFAULT_DAILY_TOKEN_LIMIT,
+  DEFAULT_DAILY_TOKEN_LIMIT_CLAUDE,
+  DEFAULT_DAILY_TOKEN_LIMIT_CODEX,
+} from "./shared";
 import { EventStore } from "./store";
 import { StatusBar } from "./status-bar";
 import { startLocalServer, LocalServer } from "./local-server";
 import { registerCommands } from "./commands";
 import { DashboardViewProvider } from "./dashboard-view";
 import { ClaudeCodeWatcher } from "./watchers/claude-code";
+import { CodexWatcher } from "./watchers/codex";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const cfg = () => vscode.workspace.getConfiguration("tokenTracker");
@@ -17,10 +22,25 @@ export async function activate(ctx: vscode.ExtensionContext) {
     return Number.isFinite(v) && v >= 0 ? v : DEFAULT_DAILY_TOKEN_LIMIT;
   };
 
+  const getSourceDailyLimits = () => {
+    const claudeRaw = Number(cfg().get("dailyTokenLimitClaude"));
+    const codexRaw = Number(cfg().get("dailyTokenLimitCodex"));
+    return {
+      "claude-code":
+        Number.isFinite(claudeRaw) && claudeRaw >= 0
+          ? claudeRaw
+          : DEFAULT_DAILY_TOKEN_LIMIT_CLAUDE,
+      codex:
+        Number.isFinite(codexRaw) && codexRaw >= 0
+          ? codexRaw
+          : DEFAULT_DAILY_TOKEN_LIMIT_CODEX,
+    };
+  };
+
   const status = new StatusBar(store, { getDailyLimit });
   ctx.subscriptions.push(status);
 
-  const sidebar = new DashboardViewProvider(store, getDailyLimit);
+  const sidebar = new DashboardViewProvider(store, getDailyLimit, getSourceDailyLimits);
   ctx.subscriptions.push(
     vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, sidebar, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -41,6 +61,24 @@ export async function activate(ctx: vscode.ExtensionContext) {
     } catch (err) {
       void vscode.window.showWarningMessage(
         `Token Tracker: Claude Code watcher failed to start — ${(err as Error).message}`,
+      );
+    }
+  };
+
+  let codexWatcher: CodexWatcher | null = null;
+  const maybeStartCodexWatcher = async () => {
+    const enabled = Boolean(cfg().get("codex.enabled") ?? true);
+    if (codexWatcher) {
+      codexWatcher.dispose();
+      codexWatcher = null;
+    }
+    if (!enabled) return;
+    codexWatcher = new CodexWatcher(ctx, store);
+    try {
+      await codexWatcher.start();
+    } catch (err) {
+      void vscode.window.showWarningMessage(
+        `Token Tracker: Codex watcher failed to start — ${(err as Error).message}`,
       );
     }
   };
@@ -75,21 +113,32 @@ export async function activate(ctx: vscode.ExtensionContext) {
         status.render();
         sidebar.render();
       }
+      if (
+        e.affectsConfiguration("tokenTracker.dailyTokenLimitClaude") ||
+        e.affectsConfiguration("tokenTracker.dailyTokenLimitCodex")
+      ) {
+        sidebar.render();
+      }
       if (e.affectsConfiguration("tokenTracker.claudeCode.enabled")) {
         await maybeStartClaudeWatcher();
+      }
+      if (e.affectsConfiguration("tokenTracker.codex.enabled")) {
+        await maybeStartCodexWatcher();
       }
     }),
   );
 
-  registerCommands(ctx, { store, status, getDailyLimit });
+  registerCommands(ctx, { store, status, getDailyLimit, getSourceDailyLimits });
 
   await maybeStartServer();
   await maybeStartClaudeWatcher();
+  await maybeStartCodexWatcher();
 
   ctx.subscriptions.push(
     new vscode.Disposable(() => {
       if (server) void server.stop();
       if (claudeWatcher) claudeWatcher.dispose();
+      if (codexWatcher) codexWatcher.dispose();
     }),
   );
 }

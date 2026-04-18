@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import type { EventStore } from "./store";
-import type { UsageSnapshot } from "@token-tracker/shared";
+import type { RateLimitsSnapshot, RateLimitWindow, UsageSnapshot } from "./shared";
+
+export interface SourceDailyLimits {
+  "claude-code": number;
+  codex: number;
+}
 
 /**
  * A tiny single-panel dashboard rendered in a VS Code webview.
@@ -15,6 +20,7 @@ export class DashboardPanel {
   private constructor(
     private readonly store: EventStore,
     private readonly getDailyLimit: () => number,
+    private readonly getSourceDailyLimits: () => SourceDailyLimits,
   ) {
     this.panel = vscode.window.createWebviewPanel(
       "tokenTracker.dashboard",
@@ -29,18 +35,25 @@ export class DashboardPanel {
     this.refresh();
   }
 
-  static show(store: EventStore, getDailyLimit: () => number) {
+  static show(
+    store: EventStore,
+    getDailyLimit: () => number,
+    getSourceDailyLimits: () => SourceDailyLimits,
+  ) {
     if (DashboardPanel.current) {
       DashboardPanel.current.panel.reveal();
       DashboardPanel.current.refresh();
       return;
     }
-    DashboardPanel.current = new DashboardPanel(store, getDailyLimit);
+    DashboardPanel.current = new DashboardPanel(store, getDailyLimit, getSourceDailyLimits);
   }
 
   private refresh() {
     const snap = this.store.snapshot(Math.max(0, this.getDailyLimit()));
-    this.panel.webview.html = renderDashboardHtml(snap, { layout: "full" });
+    this.panel.webview.html = renderDashboardHtml(snap, {
+      layout: "full",
+      sourceDailyLimits: this.getSourceDailyLimits(),
+    });
   }
 
   private dispose() {
@@ -55,11 +68,15 @@ export class DashboardPanel {
 
 export interface RenderOptions {
   layout: "full" | "compact";
+  sourceDailyLimits: SourceDailyLimits;
 }
 
 export function renderDashboardHtml(
   snap: UsageSnapshot,
-  opts: RenderOptions = { layout: "full" },
+  opts: RenderOptions = {
+    layout: "full",
+    sourceDailyLimits: { "claude-code": 1_000_000, codex: 1_000_000 },
+  },
 ): string {
   const compact = opts.layout === "compact";
   const pct =
@@ -144,6 +161,9 @@ export function renderDashboardHtml(
     })
     .join("") || `<tr><td colspan="${compact ? 3 : 8}" class="muted">Waiting for events… POST to http://127.0.0.1 to add one.</td></tr>`;
 
+  const sourceBars = renderSourceDailyBars(snap, opts.sourceDailyLimits, compact);
+  const rateBars = renderRateBars(snap, compact);
+
   return /* html */ `
 <!doctype html>
 <html>
@@ -157,6 +177,100 @@ export function renderDashboardHtml(
       background: var(--vscode-editor-background);
       padding: ${compact ? "10px 12px" : "24px"};
       ${compact ? "" : "max-width: 1000px; margin: 0 auto;"}
+    }
+    .rate-wrap {
+      display: flex;
+      gap: ${compact ? "10px" : "18px"};
+      align-items: center;
+      flex-wrap: wrap;
+      padding: ${compact ? "8px 0 10px" : "6px 0 18px"};
+      border-bottom: 1px solid var(--vscode-panel-border);
+      margin-bottom: ${compact ? "10px" : "18px"};
+      font-size: ${compact ? "11px" : "12px"};
+    }
+    .rate-row { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; min-width: 0; }
+    .rate-label { color: var(--vscode-descriptionForeground); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rate-track {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 80px;
+      height: ${compact ? "10px" : "12px"};
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .rate-fill {
+      position: absolute; inset: 0 auto 0 0;
+      background: var(--vscode-charts-blue, #3b82f6);
+      transition: width .3s ease;
+    }
+    .rate-fill.warn  { background: var(--vscode-charts-yellow, #eab308); }
+    .rate-fill.error { background: var(--vscode-charts-red,    #ef4444); }
+    .rate-cap {
+      position: absolute; top: -1px; bottom: -1px; right: -1px;
+      width: 2px; background: var(--vscode-foreground); opacity: .45;
+    }
+    .rate-reset { color: var(--vscode-descriptionForeground); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rate-empty { color: var(--vscode-descriptionForeground); font-style: italic; }
+    .rate-source {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-top: 1px solid var(--vscode-panel-border);
+    }
+    .rate-source:first-child { border-top: 0; }
+    .rate-source-name {
+      font-weight: 600; font-size: ${compact ? "11px" : "12px"};
+      min-width: ${compact ? "90px" : "110px"};
+    }
+    .rate-source-plan { color: var(--vscode-descriptionForeground); font-weight: normal; margin-left: 6px; }
+    .rate-source-tag  { color: var(--vscode-descriptionForeground); font-size: 10px; font-style: italic; margin-left: 6px; }
+    .rate-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 2px 8px; border-radius: 12px;
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-panel-border);
+      font-variant-numeric: tabular-nums;
+      font-size: ${compact ? "10px" : "11px"};
+    }
+    .rate-pill-label { color: var(--vscode-descriptionForeground); }
+    .rate-wrap.stacked { flex-direction: column; align-items: stretch; gap: 0; }
+    .source-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: ${compact ? "8px" : "10px"};
+      margin: 0 0 ${compact ? "10px" : "16px"};
+    }
+    .source-row {
+      display: grid;
+      grid-template-columns: ${compact ? "80px 1fr auto" : "100px 1fr auto"};
+      gap: 8px;
+      align-items: center;
+      font-size: ${compact ? "11px" : "12px"};
+    }
+    .source-name {
+      color: var(--vscode-descriptionForeground);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .source-track {
+      height: ${compact ? "10px" : "12px"};
+      border-radius: 4px;
+      border: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-editorWidget-background);
+      overflow: hidden;
+    }
+    .source-fill {
+      height: 100%;
+      background: var(--vscode-charts-blue, #3b82f6);
+      transition: width .3s ease;
+    }
+    .source-fill.warn  { background: var(--vscode-charts-yellow, #eab308); }
+    .source-fill.error { background: var(--vscode-charts-red,    #ef4444); }
+    .source-value {
+      font-variant-numeric: tabular-nums;
+      color: var(--vscode-descriptionForeground);
+      white-space: nowrap;
     }
     h1 { font-size: ${compact ? "13px" : "18px"}; margin: 0 0 4px; }
     h2 { font-size: ${compact ? "10px" : "13px"}; margin: ${compact ? "16px 0 6px" : "24px 0 8px"}; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vscode-descriptionForeground); }
@@ -191,6 +305,9 @@ export function renderDashboardHtml(
 <body>
   <h1>Token Tracker</h1>
   <div class="subtitle">Local usage — nothing leaves this machine.</div>
+
+  ${sourceBars}
+  ${rateBars}
 
   <div class="grid">
     <div class="card">
@@ -250,6 +367,140 @@ export function renderDashboardHtml(
   </table>
 </body>
 </html>`;
+}
+
+function renderSourceDailyBars(
+  snap: UsageSnapshot,
+  limits: SourceDailyLimits,
+  _compact: boolean,
+): string {
+  const bySource = new Map(snap.by_source_24h.map((s) => [s.source, s]));
+  const claude = bySource.get("claude-code")?.total_tokens ?? 0;
+  const codex = bySource.get("codex")?.total_tokens ?? 0;
+
+  const rows = [
+    renderSourceDailyRow("Claude", claude, limits["claude-code"]),
+    renderSourceDailyRow("Codex", codex, limits.codex),
+  ].join("");
+
+  return `<div class="source-wrap">${rows}</div>`;
+}
+
+function renderSourceDailyRow(name: string, used: number, limit: number): string {
+  const pct = limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+  const cls = pct >= 95 ? "source-fill error" : pct >= 80 ? "source-fill warn" : "source-fill";
+  const text = limit > 0
+    ? `${formatCount(used)} / ${formatCount(limit)} (${pct.toFixed(1)}%)`
+    : `${formatCount(used)} tokens`;
+  return `
+    <div class="source-row">
+      <span class="source-name">${esc(name)}</span>
+      <div class="source-track"><div class="${cls}" style="width:${pct}%"></div></div>
+      <span class="source-value">${esc(text)}</span>
+    </div>`;
+}
+
+function renderRateBars(snap: UsageSnapshot, compact: boolean): string {
+  const sources = Object.values(snap.rate_limits_by_source);
+  if (sources.length === 0) {
+    // Fallback: synthesize a daily bar from window_24h / daily_limit so the
+    // UI isn't empty on a fresh install.
+    if (snap.daily_limit > 0) {
+      const used = Math.min(100, (snap.window_24h.total_tokens / snap.daily_limit) * 100);
+      const synthetic: RateLimitWindow = {
+        label: "Daily",
+        used_percent: used,
+        window_minutes: 24 * 60,
+        resets_at: Math.floor(endOfToday() / 1000),
+      };
+      return `<div class="rate-wrap">${renderWindow(synthetic)}</div>`;
+    }
+    return `<div class="rate-wrap"><span class="rate-empty">No rate-limit info yet — start a Codex CLI or Claude Code session to populate this.</span></div>`;
+  }
+
+  // Stable order: authoritative sources first (real caps), then derived.
+  sources.sort((a, b) => Number(b.authoritative ?? false) - Number(a.authoritative ?? false));
+  const sections = sources.map((s) => renderSource(s, compact)).join("");
+  return `<div class="rate-wrap stacked">${sections}</div>`;
+}
+
+function renderSource(src: RateLimitsSnapshot, _compact: boolean): string {
+  const windows: string[] = [];
+  if (src.primary)   windows.push(renderWindow(src.primary));
+  if (src.secondary) windows.push(renderWindow(src.secondary));
+  if (windows.length === 0) {
+    windows.push(`<span class="rate-empty">no windows</span>`);
+  }
+  const tag = src.authoritative ? "" : `<span class="rate-source-tag">observed · no upstream cap</span>`;
+  const plan = src.plan ? `<span class="rate-source-plan">${esc(src.plan)}</span>` : "";
+  return `
+    <div class="rate-source">
+      <span class="rate-source-name">${esc(src.source)}${plan}${tag}</span>
+      ${windows.join("")}
+    </div>`;
+}
+
+/** Render either a proportion bar (when a real cap exists) or a count pill. */
+function renderWindow(w: RateLimitWindow): string {
+  const resetIn = w.resets_at > 0
+    ? `resets in ${formatDuration(w.resets_at * 1000 - Date.now())}`
+    : "";
+
+  if (w.used_percent != null) {
+    const pct = Math.max(0, Math.min(100, w.used_percent));
+    const cls = pct >= 95 ? "rate-fill error" : pct >= 80 ? "rate-fill warn" : "rate-fill";
+    const observed = formatObserved(w);
+    const title = `${w.label} · ${pct.toFixed(1)}% · ${w.window_minutes}m window${observed ? ` · ${observed}` : ""}`;
+    return `
+      <div class="rate-row" title="${esc(title)}">
+        <span class="rate-label">${esc(w.label)}: ${pct.toFixed(1)}%${observed ? ` · ${esc(observed)}` : ""}</span>
+        <div class="rate-track">
+          <div class="${cls}" style="width:${pct}%"></div>
+          <div class="rate-cap"></div>
+        </div>
+        ${resetIn ? `<span class="rate-reset">${esc(resetIn)}</span>` : ""}
+      </div>`;
+  }
+
+  // No authoritative cap — render a count pill only.
+  const body = formatObserved(w) || "no data";
+  const title = `${w.label} · observed in last ${w.window_minutes}m`;
+  return `
+    <span class="rate-pill" title="${esc(title)}">
+      <span class="rate-pill-label">${esc(w.label)}</span>
+      <span>${esc(body)}</span>
+      ${resetIn ? `<span class="rate-reset">· ${esc(resetIn)}</span>` : ""}
+    </span>`;
+}
+
+function formatObserved(w: RateLimitWindow): string {
+  const parts: string[] = [];
+  if (typeof w.used_tokens === "number")   parts.push(`${formatCount(w.used_tokens)} tok`);
+  if (typeof w.used_messages === "number") parts.push(`${w.used_messages} msg`);
+  return parts.join(" · ");
+}
+
+function formatCount(n: number): string {
+  if (n < 1_000) return n.toLocaleString();
+  if (n < 1_000_000) return (n / 1_000).toFixed(n < 10_000 ? 1 : 0) + "K";
+  return (n / 1_000_000).toFixed(n < 10_000_000 ? 2 : 1) + "M";
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "now";
+  const totalMin = Math.floor(ms / 60000);
+  const days  = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin - days * 60 * 24) / 60);
+  const mins  = totalMin - days * 60 * 24 - hours * 60;
+  if (days >= 1) return `${days}d ${hours}h`;
+  if (hours >= 1) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function endOfToday(): number {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
 }
 
 function esc(s: string): string {

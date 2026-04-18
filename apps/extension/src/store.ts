@@ -6,10 +6,12 @@ import type {
   IngestEvent,
   LlmProvider,
   ProviderBreakdown,
+  RateLimitsSnapshot,
+  SourceBreakdown,
   UsageEvent,
   UsageSnapshot,
-} from "@token-tracker/shared";
-import { estimateCostUSD } from "@token-tracker/shared";
+} from "./shared";
+import { estimateCostUSD } from "./shared";
 
 /** File in globalStorageUri where events are persisted as newline-delimited JSON. */
 const EVENTS_FILE = "events.ndjson";
@@ -31,6 +33,8 @@ const RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
 export class EventStore {
   private events: UsageEvent[] = [];
   private dedupe = new Set<string>();
+  /** Keyed by `source` so Codex and Claude don't overwrite each other. */
+  private rateLimitsBySource = new Map<string, RateLimitsSnapshot>();
   private readonly file: vscode.Uri;
   private readonly listeners = new Set<() => void>();
   private writeQueue: Promise<void> = Promise.resolve();
@@ -86,6 +90,42 @@ export class EventStore {
     return ev;
   }
 
+  /**
+   * Upsert the latest rate-limit snapshot for a given `source` (in-memory only
+   * — refreshed on each reload when watchers re-scan provider files). Emits a
+   * change event only if anything actually differs, so the UI doesn't repaint
+   * on no-op refreshes.
+   */
+  updateRateLimits(next: RateLimitsSnapshot): void {
+    const prev = this.rateLimitsBySource.get(next.source);
+    if (prev && snapshotEq(prev, next)) return;
+    this.rateLimitsBySource.set(next.source, next);
+    this.emit();
+  }
+
+  /**
+   * Aggregate tokens and assistant-row counts for events whose `source`
+   * matches, inside the window `[now - windowMs, now]`. Used by watchers to
+   * derive rolling usage when the upstream tool does not emit a real cap.
+   */
+  aggregateSourceWindow(
+    source: string,
+    windowMs: number,
+    now: number = Date.now(),
+  ): { tokens: number; messages: number } {
+    const cutoff = now - windowMs;
+    let tokens = 0;
+    let messages = 0;
+    for (const ev of this.events) {
+      if (ev.source !== source) continue;
+      const t = Date.parse(ev.occurred_at);
+      if (!Number.isFinite(t) || t < cutoff || t > now) continue;
+      tokens += ev.total_tokens;
+      messages += 1;
+    }
+    return { tokens, messages };
+  }
+
   /** Drop everything. */
   async clear(): Promise<void> {
     this.events = [];
@@ -109,6 +149,7 @@ export class EventStore {
 
     const window_24h = emptyAgg();
     const by_provider: Record<string, AggregateWindow> = {};
+    const by_source: Record<string, AggregateWindow> = {};
     const recent: UsageEvent[] = [];
 
     for (const ev of this.events) {
@@ -119,11 +160,17 @@ export class EventStore {
         const key = ev.provider;
         const bucket = by_provider[key] ?? (by_provider[key] = emptyAgg());
         addTo(bucket, ev);
+        const sourceKey = ev.source || "unknown";
+        const sourceBucket = by_source[sourceKey] ?? (by_source[sourceKey] = emptyAgg());
+        addTo(sourceBucket, ev);
         recent.push(ev);
       }
     }
 
     recent.sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
+
+    const rate_limits_by_source: Record<string, RateLimitsSnapshot> = {};
+    for (const [k, v] of this.rateLimitsBySource) rate_limits_by_source[k] = v;
 
     return {
       daily_limit: dailyLimit,
@@ -137,7 +184,15 @@ export class EventStore {
           ...agg,
         }))
         .sort((a, b) => b.total_tokens - a.total_tokens),
+      by_source_24h: Object.entries(by_source)
+        .map(([source, agg]): SourceBreakdown => ({
+          source,
+          ...agg,
+        }))
+        .sort((a, b) => b.total_tokens - a.total_tokens),
       recent: recent.slice(0, 25),
+      rate_limits: pickMostImportant(this.rateLimitsBySource),
+      rate_limits_by_source,
     };
   }
 
@@ -265,6 +320,59 @@ function emptyAgg(): AggregateWindow {
     cost_usd: 0,
     event_count: 0,
   };
+}
+
+function windowEq(
+  a: RateLimitsSnapshot["primary"],
+  b: RateLimitsSnapshot["primary"],
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.label === b.label &&
+    a.used_percent === b.used_percent &&
+    a.used_tokens === b.used_tokens &&
+    a.used_messages === b.used_messages &&
+    a.window_minutes === b.window_minutes &&
+    a.resets_at === b.resets_at
+  );
+}
+
+function snapshotEq(a: RateLimitsSnapshot, b: RateLimitsSnapshot): boolean {
+  return (
+    a.source === b.source &&
+    a.plan === b.plan &&
+    (a.authoritative ?? false) === (b.authoritative ?? false) &&
+    windowEq(a.primary, b.primary) &&
+    windowEq(a.secondary, b.secondary)
+  );
+}
+
+/**
+ * Pick the snapshot a single-slot consumer (status bar) should highlight:
+ *   1. highest known `used_percent` across all sources (worst-case first), else
+ *   2. most recently updated by ISO timestamp.
+ * Returns null if no snapshots exist.
+ */
+function pickMostImportant(
+  bySource: Map<string, RateLimitsSnapshot>,
+): RateLimitsSnapshot | null {
+  let best: RateLimitsSnapshot | null = null;
+  let bestScore = -1;
+  let bestUpdated = -1;
+  for (const snap of bySource.values()) {
+    const pct = Math.max(
+      snap.primary?.used_percent ?? -1,
+      snap.secondary?.used_percent ?? -1,
+    );
+    const updated = Date.parse(snap.updated_at);
+    if (pct > bestScore || (pct === bestScore && updated > bestUpdated)) {
+      best = snap;
+      bestScore = pct;
+      bestUpdated = updated;
+    }
+  }
+  return best;
 }
 
 function addTo(agg: AggregateWindow, ev: UsageEvent) {
