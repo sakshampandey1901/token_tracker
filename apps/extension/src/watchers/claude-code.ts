@@ -124,7 +124,10 @@ export class ClaudeCodeWatcher implements vscode.Disposable {
         } else if (opts.backfillIfNew) {
           startAt = st.mtimeMs < backfillCutoff ? st.size : 0;
         } else {
-          startAt = st.size;
+          // New files discovered after startup should be ingested from byte 0:
+          // their current contents are new to the tracker even if the writer
+          // managed to append several rows before our first rescan.
+          startAt = 0;
         }
         if (startAt >= st.size) {
           this.offsets[file] = { size: st.size, mtimeMs: st.mtimeMs };
@@ -194,8 +197,11 @@ export class ClaudeCodeWatcher implements vscode.Disposable {
     const text = buf.toString("utf8");
     const lines = text.split("\n");
 
-    // if we started at a non-line boundary (mid-line), skip the first partial.
-    const startIdx = startAt > 0 ? 1 : 0;
+    // Only skip the first chunk line when the saved offset landed in the
+    // middle of a JSONL row. When we resume from a previous EOF, `startAt`
+    // is already on a line boundary and the first new row must be kept.
+    const startIdx =
+      startAt > 0 && !(await isLineBoundary(file, startAt)) ? 1 : 0;
     for (let i = startIdx; i < lines.length; i++) {
       const line = (lines[i] ?? "").trim();
       if (!line) continue;
@@ -262,6 +268,19 @@ async function exists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function isLineBoundary(file: string, offset: number): Promise<boolean> {
+  if (offset <= 0) return true;
+  const fd = await fs.promises.open(file, "r");
+  try {
+    const buf = Buffer.alloc(1);
+    const { bytesRead } = await fd.read(buf, 0, 1, offset - 1);
+    if (bytesRead <= 0) return true;
+    return buf[0] === 0x0a || buf[0] === 0x0d;
+  } finally {
+    await fd.close();
   }
 }
 

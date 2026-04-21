@@ -127,7 +127,10 @@ export class CodexWatcher implements vscode.Disposable {
         } else if (opts.backfillIfNew) {
           startAt = st.mtimeMs < backfillCutoff ? st.size : 0;
         } else {
-          startAt = st.size;
+          // New files discovered after startup should be ingested from byte 0:
+          // their current contents are new to the tracker even if the writer
+          // appended several rows before our first rescan.
+          startAt = 0;
         }
         // `session_meta` with `cwd` lives at the top of each rollout. If the
         // scan is going to skip it (because we're resuming mid-file) seed the
@@ -177,7 +180,8 @@ export class CodexWatcher implements vscode.Disposable {
 
     const text = buf.toString("utf8");
     const lines = text.split("\n");
-    const startIdx = startAt > 0 ? 1 : 0;
+    const startIdx =
+      startAt > 0 && !(await isLineBoundary(file, startAt)) ? 1 : 0;
     const base = path.basename(file);
     let sawRateLimits = false;
 
@@ -226,17 +230,41 @@ export class CodexWatcher implements vscode.Disposable {
 
     if (r.type !== "event_msg" || r.payload?.type !== "token_count") return false;
 
-    // 1) rate_limits — always update if present (most recent line wins because
-    //    files are scanned oldest→newest and tail reads are in-order). When
-    //    the CLI gives us a real used_percent + window_minutes we enrich the
-    //    window with locally-observed tokens/messages over that exact span,
-    //    so the UI can render "83% · 142K tok · 67 msgs" in one row.
+    // 1) per-turn usage.
     const rl = r.payload?.rate_limits;
+    const usage = r.payload?.info?.last_token_usage;
+    if (usage) {
+      const input_tokens = num(usage.input_tokens);
+      const cached_tokens = num(usage.cached_input_tokens);
+      const output_tokens =
+        num(usage.output_tokens) + num(usage.reasoning_output_tokens);
+
+      if (input_tokens > 0 || output_tokens > 0 || cached_tokens > 0) {
+        await this.store.record({
+          provider: "openai",
+          // Codex rollouts don't name the exact model per turn in this event;
+          // use a stable source tag so it groups cleanly in the dashboard.
+          model: "codex",
+          input_tokens,
+          output_tokens,
+          cached_tokens: cached_tokens > 0 ? cached_tokens : undefined,
+          source: "codex",
+          project: this.cwdByRollout[basename] ?? null,
+          client_event_id: r.timestamp ? `${basename}:${r.timestamp}` : undefined,
+          occurred_at: r.timestamp,
+        });
+      }
+    }
+
+    // 2) rate_limits — always update if present (most recent line wins because
+    //    files are scanned oldest→newest and tail reads are in-order). Enrich
+    //    after recording this row's usage so the observed counts line up with
+    //    the same authoritative snapshot instead of lagging by one turn.
     if (rl) {
       const nowMs = Date.now();
       const primary = toWindow(rl.primary, "Session");
       const secondary = toWindow(rl.secondary, "Weekly");
-      if (primary)   enrichWithObserved(primary,   this.store, nowMs);
+      if (primary) enrichWithObserved(primary, this.store, nowMs);
       if (secondary) enrichWithObserved(secondary, this.store, nowMs);
 
       const snap: RateLimitsSnapshot = {
@@ -254,32 +282,6 @@ export class CodexWatcher implements vscode.Disposable {
       this.store.updateRateLimits(snap);
     }
 
-    // 2) per-turn usage.
-    const usage = r.payload?.info?.last_token_usage;
-    if (!usage) return Boolean(rl);
-
-    const input_tokens  = num(usage.input_tokens);
-    const cached_tokens = num(usage.cached_input_tokens);
-    const output_tokens =
-      num(usage.output_tokens) + num(usage.reasoning_output_tokens);
-
-    if (input_tokens === 0 && output_tokens === 0 && cached_tokens === 0) {
-      return Boolean(rl);
-    }
-
-    await this.store.record({
-      provider: "openai",
-      // Codex rollouts don't name the exact model per turn in this event;
-      // use a stable source tag so it groups cleanly in the dashboard.
-      model: "codex",
-      input_tokens,
-      output_tokens,
-      cached_tokens: cached_tokens > 0 ? cached_tokens : undefined,
-      source: "codex",
-      project: this.cwdByRollout[basename] ?? null,
-      client_event_id: r.timestamp ? `${basename}:${r.timestamp}` : undefined,
-      occurred_at: r.timestamp,
-    });
     return Boolean(rl);
   }
 
@@ -410,6 +412,19 @@ async function exists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function isLineBoundary(file: string, offset: number): Promise<boolean> {
+  if (offset <= 0) return true;
+  const fd = await fs.promises.open(file, "r");
+  try {
+    const buf = Buffer.alloc(1);
+    const { bytesRead } = await fd.read(buf, 0, 1, offset - 1);
+    if (bytesRead <= 0) return true;
+    return buf[0] === 0x0a || buf[0] === 0x0d;
+  } finally {
+    await fd.close();
   }
 }
 

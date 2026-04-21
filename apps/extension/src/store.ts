@@ -132,6 +132,7 @@ export class EventStore {
   async clear(): Promise<void> {
     this.events = [];
     this.dedupe.clear();
+    this.rateLimitsBySource.clear();
     await this.rewrite();
     this.emit();
   }

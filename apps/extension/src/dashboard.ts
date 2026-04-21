@@ -306,6 +306,52 @@ export function renderDashboardHtml(
     .day-label { font-size: 10px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
     .delta-up   { color: var(--vscode-errorForeground); }
     .delta-down { color: var(--vscode-charts-green, #22c55e); }
+    .project-list {
+      display: flex;
+      flex-direction: column;
+      gap: ${compact ? "8px" : "10px"};
+    }
+    .project-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+      padding: ${compact ? "6px 8px" : "8px 10px"};
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 5px;
+      background: var(--vscode-editor-background);
+    }
+    .project-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: ${compact ? "11px" : "12px"};
+    }
+    .project-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .project-total { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .io-bar {
+      display: flex;
+      width: 100%;
+      height: ${compact ? "10px" : "12px"};
+      border-radius: 3px;
+      overflow: hidden;
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-panel-border);
+    }
+    .io-bar .io-in  { background: var(--vscode-charts-blue,   #3b82f6); }
+    .io-bar .io-out { background: var(--vscode-charts-orange, #f59e0b); }
+    .io-legend {
+      display: flex;
+      gap: 12px;
+      font-size: ${compact ? "10px" : "11px"};
+      color: var(--vscode-descriptionForeground);
+      font-variant-numeric: tabular-nums;
+    }
+    .io-legend .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle;
+    }
+    .io-legend .dot.in  { background: var(--vscode-charts-blue,   #3b82f6); }
+    .io-legend .dot.out { background: var(--vscode-charts-orange, #f59e0b); }
   </style>
 </head>
 <body>
@@ -360,6 +406,8 @@ export function renderDashboardHtml(
     <tbody>${providerRows}</tbody>
   </table>
 
+  ${projectSection}
+
   <h2>Recent events</h2>
   <table>
     <thead><tr>${
@@ -373,6 +421,62 @@ export function renderDashboardHtml(
   </table>
 </body>
 </html>`;
+}
+
+/**
+ * Render the "By project (24h)" card. Each row shows the project name, the
+ * total tokens, and a single horizontal bar split into input vs output
+ * proportions. Intentionally does not show cost — project attribution is a
+ * rough signal (cwd-based), and percentages vs. raw counts read cleanly.
+ */
+function renderProjectSection(projects: ProjectBreakdown[], compact: boolean): string {
+  if (!projects || projects.length === 0) {
+    return `
+  <h2>By project (24h)</h2>
+  <div class="muted" style="font-size:${compact ? "11px" : "12px"}">
+    No project-tagged events in the last 24 hours.
+  </div>`;
+  }
+
+  const visible = compact ? projects.slice(0, 5) : projects.slice(0, 10);
+  const rows = visible.map((p) => renderProjectRow(p)).join("");
+
+  return `
+  <h2>By project (24h)</h2>
+  <div class="io-legend">
+    <span><span class="dot in"></span>Input</span>
+    <span><span class="dot out"></span>Output</span>
+  </div>
+  <div class="project-list" style="margin-top:6px">${rows}</div>`;
+}
+
+function renderProjectRow(p: ProjectBreakdown): string {
+  const io = p.input_tokens + p.output_tokens;
+  const inPct = io > 0 ? (p.input_tokens / io) * 100 : 0;
+  const outPct = io > 0 ? 100 - inPct : 0;
+  const tooltip =
+    p.project === "unknown"
+      ? "No project tag recorded for these events."
+      : p.project;
+  const title =
+    `${tooltip}\n` +
+    `in: ${p.input_tokens.toLocaleString()}  out: ${p.output_tokens.toLocaleString()}` +
+    (p.cached_tokens ? `  cached: ${p.cached_tokens.toLocaleString()}` : "");
+  return `
+    <div class="project-row" title="${esc(title)}">
+      <div class="project-head">
+        <span class="project-name">${esc(p.label || p.project)}</span>
+        <span class="project-total">${p.total_tokens.toLocaleString()} tok · ${p.event_count} evt</span>
+      </div>
+      <div class="io-bar" aria-label="input vs output tokens">
+        <div class="io-in"  style="width:${inPct.toFixed(2)}%"></div>
+        <div class="io-out" style="width:${outPct.toFixed(2)}%"></div>
+      </div>
+      <div class="io-legend">
+        <span>In ${p.input_tokens.toLocaleString()} (${inPct.toFixed(0)}%)</span>
+        <span>Out ${p.output_tokens.toLocaleString()} (${outPct.toFixed(0)}%)</span>
+      </div>
+    </div>`;
 }
 
 function renderSourceDailyBars(
