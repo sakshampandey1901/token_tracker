@@ -72,8 +72,8 @@ From Command Palette:
 | Setting | Default | Notes |
 | --- | --- | --- |
 | `tokenTracker.dailyTokenLimit` | `1000000` | Global status-bar 24h meter limit; set `0` to hide meter |
-| `tokenTracker.dailyTokenLimitClaude` | `1000000` | Claude source bar limit in dashboard (rolling 5h usage) |
-| `tokenTracker.dailyTokenLimitCodex` | `1000000` | Codex source bar limit in dashboard (rolling 5h usage) |
+| `tokenTracker.dailyTokenLimitClaude` | `1000000` | Configured cap for the Claude source bar in dashboard (rolling 5h usage) |
+| `tokenTracker.dailyTokenLimitCodex` | `1000000` | Configured cap for the Codex source bar in dashboard (rolling 5h usage) |
 | `tokenTracker.enableLocalIngest` | `true` | Enables loopback HTTP ingest server |
 | `tokenTracker.localIngestPort` | `58417` | Ingest port (binds to `127.0.0.1` only) |
 | `tokenTracker.claudeCode.enabled` | `true` | Watches `~/.claude/projects/**/*.jsonl` for Claude Code usage |

@@ -234,12 +234,20 @@ export class CodexWatcher implements vscode.Disposable {
     const rl = r.payload?.rate_limits;
     const usage = r.payload?.info?.last_token_usage;
     if (usage) {
-      const input_tokens = num(usage.input_tokens);
-      const cached_tokens = num(usage.cached_input_tokens);
-      const output_tokens =
-        num(usage.output_tokens) + num(usage.reasoning_output_tokens);
+      const rawInput = num(usage.input_tokens);
+      const rawOutput = num(usage.output_tokens) + num(usage.reasoning_output_tokens);
+      const reportedTotal = num(usage.total_tokens);
 
-      if (input_tokens > 0 || output_tokens > 0 || cached_tokens > 0) {
+      // Codex `cached_input_tokens` is diagnostic metadata and should not be
+      // added into burn totals. Prefer authoritative `total_tokens` when
+      // present, then split that total into output + input remainder so the
+      // stored `total_tokens` reflects real spend.
+      const output_tokens = rawOutput;
+      const input_tokens = reportedTotal > 0
+        ? Math.max(0, reportedTotal - output_tokens)
+        : rawInput;
+
+      if (input_tokens > 0 || output_tokens > 0) {
         await this.store.record({
           provider: "openai",
           // Codex rollouts don't name the exact model per turn in this event;
@@ -247,7 +255,6 @@ export class CodexWatcher implements vscode.Disposable {
           model: "codex",
           input_tokens,
           output_tokens,
-          cached_tokens: cached_tokens > 0 ? cached_tokens : undefined,
           source: "codex",
           project: this.cwdByRollout[basename] ?? null,
           client_event_id: r.timestamp ? `${basename}:${r.timestamp}` : undefined,

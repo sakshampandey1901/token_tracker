@@ -291,6 +291,10 @@ export class EventStore {
         if (!Number.isFinite(t) || t < cutoff) { needsCompact = true; continue; }
         if (!Object.prototype.hasOwnProperty.call(ev, "project")) {
           ev.project = null;
+          needsCompact = true;
+        }
+        if (normalizeLegacyCodexEvent(ev)) {
+          needsCompact = true;
         }
         kept.push(ev);
         if (ev.client_event_id) this.dedupe.add(ev.client_event_id);
@@ -433,6 +437,20 @@ function addTo(agg: AggregateWindow, ev: UsageEvent) {
   agg.cached_tokens += ev.cached_tokens;
   agg.cost_usd      += ev.cost_usd;
   agg.event_count   += 1;
+}
+
+/**
+ * Back-compat migration for Codex events recorded before cached-input parsing
+ * was fixed. Old records treated `cached_input_tokens` as burn, which inflates
+ * `total_tokens` and usage bars. We normalize them in-place on load.
+ */
+function normalizeLegacyCodexEvent(ev: UsageEvent): boolean {
+  if (ev.source !== "codex") return false;
+  if (ev.cached_tokens <= 0) return false;
+  const correctedTotal = Math.max(0, ev.input_tokens + ev.output_tokens);
+  ev.cached_tokens = 0;
+  ev.total_tokens = correctedTotal;
+  return true;
 }
 
 function isoDay(d: Date): string {
