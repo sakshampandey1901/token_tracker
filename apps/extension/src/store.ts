@@ -60,7 +60,7 @@ export class EventStore {
     const input_tokens  = clampInt(raw.input_tokens);
     const output_tokens = clampInt(raw.output_tokens);
     const cached_tokens = clampInt(raw.cached_tokens ?? 0);
-    const total_tokens  = input_tokens + output_tokens + cached_tokens;
+    const total_tokens  = input_tokens + output_tokens;
     const cost_usd =
       raw.cost_usd != null && Number.isFinite(raw.cost_usd)
         ? Math.max(0, raw.cost_usd)
@@ -294,6 +294,9 @@ export class EventStore {
           needsCompact = true;
         }
         if (normalizeLegacyCodexEvent(ev)) {
+          needsCompact = true;
+        }
+        if (normalizeTotalTokens(ev)) {
           needsCompact = true;
         }
         kept.push(ev);
