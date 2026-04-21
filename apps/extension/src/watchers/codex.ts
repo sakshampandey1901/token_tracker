@@ -276,6 +276,7 @@ export class CodexWatcher implements vscode.Disposable {
       output_tokens,
       cached_tokens: cached_tokens > 0 ? cached_tokens : undefined,
       source: "codex",
+      project: this.cwdByRollout[basename] ?? null,
       client_event_id: r.timestamp ? `${basename}:${r.timestamp}` : undefined,
       occurred_at: r.timestamp,
     });
@@ -360,6 +361,47 @@ function enrichWithObserved(
 function num(v: unknown): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * Read up to 64KB from the start of a rollout file and return the `cwd` from
+ * the first `session_meta` row we find. Rollouts written by `codex-tui` put
+ * that row on line 1, so this is bounded and fast. Returns `null` if nothing
+ * usable is there (corrupt file, future format, etc).
+ */
+async function sniffCwd(file: string): Promise<string | null> {
+  const MAX = 64 * 1024;
+  let fd: fs.promises.FileHandle | null = null;
+  try {
+    fd = await fs.promises.open(file, "r");
+    const st = await fd.stat();
+    const length = Math.min(MAX, st.size);
+    if (length <= 0) return null;
+    const buf = Buffer.alloc(length);
+    await fd.read(buf, 0, length, 0);
+    const text = buf.toString("utf8");
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const obj = JSON.parse(trimmed) as {
+          type?: string;
+          payload?: { cwd?: string };
+        };
+        if (obj?.type === "session_meta" && typeof obj.payload?.cwd === "string" && obj.payload.cwd) {
+          return obj.payload.cwd;
+        }
+      } catch {
+        // partial line on a sniff boundary — stop; the meta row is always first.
+        break;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd) await fd.close().catch(() => undefined);
+  }
 }
 
 async function exists(p: string): Promise<boolean> {

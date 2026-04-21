@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import type { EventStore } from "./store";
-import type { RateLimitsSnapshot, RateLimitWindow, UsageSnapshot } from "./shared";
+import type {
+  ProjectBreakdown,
+  RateLimitsSnapshot,
+  RateLimitWindow,
+  UsageSnapshot,
+} from "./shared";
 
 export interface SourceDailyLimits {
   "claude-code": number;
@@ -163,6 +168,7 @@ export function renderDashboardHtml(
 
   const sourceBars = renderSourceDailyBars(snap, opts.sourceDailyLimits, compact);
   const rateBars = renderRateBars(snap, compact);
+  const projectSection = renderProjectSection(snap.by_project_24h, compact);
 
   return /* html */ `
 <!doctype html>

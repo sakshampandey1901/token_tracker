@@ -39,6 +39,7 @@ async function reportUsage(store: EventStore, raw: unknown) {
     cached_tokens?: number;
     cost_usd?: number;
     source?: string;
+    project?: string;
     client_event_id?: string;
     occurred_at?: string;
   };
@@ -54,6 +55,7 @@ async function reportUsage(store: EventStore, raw: unknown) {
     cached_tokens: r.cached_tokens,
     cost_usd: r.cost_usd,
     source: r.source ?? "programmatic",
+    project: r.project ?? null,
     client_event_id: r.client_event_id,
     occurred_at: r.occurred_at,
   });

@@ -50,6 +50,7 @@ export async function startLocalServer(port: number, store: EventStore): Promise
           cached_tokens: Number(raw.cached_tokens ?? 0),
           cost_usd: raw.cost_usd != null ? Number(raw.cost_usd) : undefined,
           source: raw.source ?? "local-ingest",
+          project: typeof raw.project === "string" ? raw.project : null,
           client_event_id: raw.client_event_id,
           occurred_at: raw.occurred_at,
         });
