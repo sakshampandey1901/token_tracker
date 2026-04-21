@@ -122,7 +122,8 @@ export class EventStore {
       if (ev.source !== source) continue;
       const t = Date.parse(ev.occurred_at);
       if (!Number.isFinite(t) || t < cutoff || t > now) continue;
-      tokens += ev.total_tokens;
+      // "Burn" for window bars should ignore cached tokens.
+      tokens += ev.input_tokens + ev.output_tokens;
       messages += 1;
     }
     return { tokens, messages };

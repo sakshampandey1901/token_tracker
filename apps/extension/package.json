@@ -2,7 +2,7 @@
   "name": "token-tracker",
   "displayName": "Token Tracker",
   "description": "Free, local-only LLM token usage tracker. Works in VS Code and Cursor.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "token-tracker",
   "private": true,
   "license": "MIT",
