@@ -45,9 +45,19 @@ interface OffsetMap {
   [absPath: string]: { size: number; mtimeMs: number };
 }
 
+/**
+ * Cache the `cwd` from each rollout's `session_meta` row so per-turn
+ * `event_msg` rows can be tagged with the project they belong to.
+ * Keyed by rollout basename (not abs path) to match `client_event_id` keying.
+ */
+interface CwdMap {
+  [rolloutBasename: string]: string;
+}
+
 export class CodexWatcher implements vscode.Disposable {
   private readonly root = path.join(os.homedir(), ".codex", "sessions");
   private offsets: OffsetMap = {};
+  private cwdByRollout: CwdMap = {};
   private timer: NodeJS.Timeout | null = null;
   private dirWatcher: fs.FSWatcher | null = null;
   private disposed = false;
@@ -119,6 +129,15 @@ export class CodexWatcher implements vscode.Disposable {
         } else {
           startAt = st.size;
         }
+        // `session_meta` with `cwd` lives at the top of each rollout. If the
+        // scan is going to skip it (because we're resuming mid-file) seed the
+        // per-rollout cwd cache from the head so later event_msg rows can be
+        // tagged with the right project.
+        const base = path.basename(file);
+        if (startAt > 0 && !this.cwdByRollout[base]) {
+          const sniffed = await sniffCwd(file);
+          if (sniffed) this.cwdByRollout[base] = sniffed;
+        }
         if (startAt >= st.size) {
           this.offsets[file] = { size: st.size, mtimeMs: st.mtimeMs };
           continue;
@@ -182,6 +201,7 @@ export class CodexWatcher implements vscode.Disposable {
       type?: string;
       payload?: {
         type?: string;
+        cwd?: string;
         info?: {
           last_token_usage?: {
             input_tokens?: number;
@@ -198,6 +218,11 @@ export class CodexWatcher implements vscode.Disposable {
         } | null;
       };
     };
+
+    if (r.type === "session_meta" && typeof r.payload?.cwd === "string" && r.payload.cwd) {
+      this.cwdByRollout[basename] = r.payload.cwd;
+      return false;
+    }
 
     if (r.type !== "event_msg" || r.payload?.type !== "token_count") return false;
 

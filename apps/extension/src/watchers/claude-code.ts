@@ -214,6 +214,7 @@ export class ClaudeCodeWatcher implements vscode.Disposable {
       uuid?: string;
       timestamp?: string;
       sessionId?: string;
+      cwd?: string;
       message?: {
         model?: string;
         usage?: {
@@ -243,6 +244,7 @@ export class ClaudeCodeWatcher implements vscode.Disposable {
       output_tokens,
       cached_tokens: cached_tokens > 0 ? cached_tokens : undefined,
       source: "claude-code",
+      project: typeof r.cwd === "string" && r.cwd ? r.cwd : null,
       client_event_id: r.uuid,
       occurred_at: r.timestamp,
     });
