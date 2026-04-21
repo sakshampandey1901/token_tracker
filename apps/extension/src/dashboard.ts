@@ -340,6 +340,7 @@ export function renderDashboardHtml(
     }
     .io-bar .io-in  { background: var(--vscode-charts-blue,   #3b82f6); }
     .io-bar .io-out { background: var(--vscode-charts-orange, #f59e0b); }
+    .io-bar .io-cache { background: var(--vscode-charts-purple, #8b5cf6); }
     .io-legend {
       display: flex;
       gap: 12px;
@@ -352,6 +353,7 @@ export function renderDashboardHtml(
     }
     .io-legend .dot.in  { background: var(--vscode-charts-blue,   #3b82f6); }
     .io-legend .dot.out { background: var(--vscode-charts-orange, #f59e0b); }
+    .io-legend .dot.cache { background: var(--vscode-charts-purple, #8b5cf6); }
   </style>
 </head>
 <body>
@@ -425,9 +427,10 @@ export function renderDashboardHtml(
 
 /**
  * Render the "By project (24h)" card. Each row shows the project name, the
- * total tokens, and a single horizontal bar split into input vs output
- * proportions. Intentionally does not show cost — project attribution is a
- * rough signal (cwd-based), and percentages vs. raw counts read cleanly.
+ * total tokens, and a horizontal bar split into input / output / cached
+ * proportions so the bar reconciles with the displayed total token count.
+ * Intentionally does not show cost — project attribution is a rough signal
+ * (cwd-based), and percentages vs. raw counts read cleanly.
  */
 function renderProjectSection(projects: ProjectBreakdown[], compact: boolean): string {
   if (!projects || projects.length === 0) {
@@ -446,14 +449,16 @@ function renderProjectSection(projects: ProjectBreakdown[], compact: boolean): s
   <div class="io-legend">
     <span><span class="dot in"></span>Input</span>
     <span><span class="dot out"></span>Output</span>
+    <span><span class="dot cache"></span>Cached</span>
   </div>
   <div class="project-list" style="margin-top:6px">${rows}</div>`;
 }
 
 function renderProjectRow(p: ProjectBreakdown): string {
-  const io = p.input_tokens + p.output_tokens;
-  const inPct = io > 0 ? (p.input_tokens / io) * 100 : 0;
-  const outPct = io > 0 ? 100 - inPct : 0;
+  const total = p.total_tokens;
+  const inPct = total > 0 ? (p.input_tokens / total) * 100 : 0;
+  const outPct = total > 0 ? (p.output_tokens / total) * 100 : 0;
+  const cachedPct = total > 0 ? Math.max(0, 100 - inPct - outPct) : 0;
   const tooltip =
     p.project === "unknown"
       ? "No project tag recorded for these events."
@@ -468,13 +473,15 @@ function renderProjectRow(p: ProjectBreakdown): string {
         <span class="project-name">${esc(p.label || p.project)}</span>
         <span class="project-total">${p.total_tokens.toLocaleString()} tok · ${p.event_count} evt</span>
       </div>
-      <div class="io-bar" aria-label="input vs output tokens">
+      <div class="io-bar" aria-label="input, output, and cached tokens">
         <div class="io-in"  style="width:${inPct.toFixed(2)}%"></div>
         <div class="io-out" style="width:${outPct.toFixed(2)}%"></div>
+        <div class="io-cache" style="width:${cachedPct.toFixed(2)}%"></div>
       </div>
       <div class="io-legend">
         <span>In ${p.input_tokens.toLocaleString()} (${inPct.toFixed(0)}%)</span>
         <span>Out ${p.output_tokens.toLocaleString()} (${outPct.toFixed(0)}%)</span>
+        <span>Cached ${p.cached_tokens.toLocaleString()} (${cachedPct.toFixed(0)}%)</span>
       </div>
     </div>`;
 }
@@ -493,7 +500,7 @@ function renderSourceDailyBars(
     renderSourceDailyRow("Codex", codex, limits.codex),
   ].join("");
 
-  return `<div class="source-wrap"><div class="muted">Rolling window: last 5h</div>${rows}</div>`;
+  return `<div class="source-wrap"><div class="muted">Rolling 5h usage vs configured cap</div>${rows}</div>`;
 }
 
 function renderSourceDailyRow(name: string, used: number, limit: number): string {

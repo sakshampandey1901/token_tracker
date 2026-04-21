@@ -76,13 +76,13 @@
           "type": "number",
           "default": 1000000,
           "minimum": 0,
-          "description": "Daily token budget for Claude source bars in the dashboard."
+          "description": "Configured token cap used for the Claude rolling 5h source bar in the dashboard."
         },
         "tokenTracker.dailyTokenLimitCodex": {
           "type": "number",
           "default": 1000000,
           "minimum": 0,
-          "description": "Daily token budget for Codex source bars in the dashboard."
+          "description": "Configured token cap used for the Codex rolling 5h source bar in the dashboard."
         },
         "tokenTracker.localIngestPort": {
           "type": "number",
