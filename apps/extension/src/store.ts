@@ -456,6 +456,17 @@ function normalizeLegacyCodexEvent(ev: UsageEvent): boolean {
   return true;
 }
 
+/**
+ * Normalize events where total_tokens previously included cached_tokens.
+ * total_tokens should only be input_tokens + output_tokens.
+ */
+function normalizeTotalTokens(ev: UsageEvent): boolean {
+  const expected = ev.input_tokens + ev.output_tokens;
+  if (ev.total_tokens === expected) return false;
+  ev.total_tokens = expected;
+  return true;
+}
+
 function isoDay(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
