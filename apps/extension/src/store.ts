@@ -5,6 +5,7 @@ import type {
   DailyBucket,
   IngestEvent,
   LlmProvider,
+  ProjectBreakdown,
   ProviderBreakdown,
   RateLimitsSnapshot,
   SourceBreakdown,
@@ -78,6 +79,7 @@ export class EventStore {
       total_tokens,
       cost_usd,
       source: raw.source ?? "extension",
+      project: normalizeProject(raw.project),
       occurred_at: raw.occurred_at ?? new Date().toISOString(),
       recorded_at: new Date().toISOString(),
       client_event_id,
@@ -152,6 +154,7 @@ export class EventStore {
     const by_provider: Record<string, AggregateWindow> = {};
     const by_source: Record<string, AggregateWindow> = {};
     const by_source_5h: Record<string, AggregateWindow> = {};
+    const by_project: Record<string, AggregateWindow> = {};
     const recent: UsageEvent[] = [];
 
     for (const ev of this.events) {
@@ -165,6 +168,9 @@ export class EventStore {
         const sourceKey = ev.source || "unknown";
         const sourceBucket = by_source[sourceKey] ?? (by_source[sourceKey] = emptyAgg());
         addTo(sourceBucket, ev);
+        const projectKey = ev.project || "unknown";
+        const projectBucket = by_project[projectKey] ?? (by_project[projectKey] = emptyAgg());
+        addTo(projectBucket, ev);
         recent.push(ev);
       }
       if (t >= cutoff5h) {
@@ -200,6 +206,13 @@ export class EventStore {
       by_source_5h: Object.entries(by_source_5h)
         .map(([source, agg]): SourceBreakdown => ({
           source,
+          ...agg,
+        }))
+        .sort((a, b) => b.total_tokens - a.total_tokens),
+      by_project_24h: Object.entries(by_project)
+        .map(([project, agg]): ProjectBreakdown => ({
+          project,
+          label: projectLabel(project),
           ...agg,
         }))
         .sort((a, b) => b.total_tokens - a.total_tokens),
@@ -275,6 +288,9 @@ export class EventStore {
         if (!ev?.occurred_at) { needsCompact = true; continue; }
         const t = Date.parse(ev.occurred_at);
         if (!Number.isFinite(t) || t < cutoff) { needsCompact = true; continue; }
+        if (!Object.prototype.hasOwnProperty.call(ev, "project")) {
+          ev.project = null;
+        }
         kept.push(ev);
         if (ev.client_event_id) this.dedupe.add(ev.client_event_id);
       } catch {
@@ -322,6 +338,27 @@ function clampInt(n: unknown): number {
   const v = Number(n ?? 0);
   if (!Number.isFinite(v) || v <= 0) return 0;
   return Math.floor(v);
+}
+
+/**
+ * Normalize an arbitrary caller-supplied project value to a trimmed string
+ * (or null when it's effectively empty). We cap the length so a malformed
+ * caller can't blow up the store with a huge key.
+ */
+function normalizeProject(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  return s.length > 512 ? s.slice(0, 512) : s;
+}
+
+/** Last path segment of a `/`-or-`\`-separated path, else the key unchanged. */
+function projectLabel(key: string): string {
+  if (!key || key === "unknown") return "unknown";
+  const trimmed = key.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  const base = idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+  return base || trimmed;
 }
 
 function emptyAgg(): AggregateWindow {

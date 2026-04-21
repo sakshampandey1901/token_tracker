@@ -22,6 +22,13 @@ export interface UsageEvent {
   cost_usd: number;
   /** Free-form tag: "extension", "local-ingest", "programmatic", … */
   source: string;
+  /**
+   * Absolute working directory (or other stable identifier) for the project
+   * this event was recorded in. `null` when the upstream tool didn't tell us.
+   * We display `basename(project)` in the UI and keep the full path as a
+   * tooltip so disambiguation still works across repos with the same name.
+   */
+  project: string | null;
   /** ISO timestamp of when the call happened. */
   occurred_at: string;
   /** ISO timestamp of when we recorded it. */
@@ -42,6 +49,7 @@ export interface IngestEvent {
   cached_tokens?: number;
   cost_usd?: number;
   source?: string;
+  project?: string | null;
   client_event_id?: string;
   occurred_at?: string;
 }
@@ -66,6 +74,13 @@ export interface ProviderBreakdown extends AggregateWindow {
 
 export interface SourceBreakdown extends AggregateWindow {
   source: string;
+}
+
+export interface ProjectBreakdown extends AggregateWindow {
+  /** Stable key used for grouping (absolute path when known). */
+  project: string;
+  /** Short label for the UI (basename of the path, or the key itself). */
+  label: string;
 }
 
 /**
@@ -120,6 +135,11 @@ export interface UsageSnapshot {
   by_provider_24h: ProviderBreakdown[];
   by_source_24h: SourceBreakdown[];
   by_source_5h: SourceBreakdown[];
+  /**
+   * Per-project usage in the last 24 hours. Events without a known project
+   * are grouped under the "unknown" key so totals still reconcile.
+   */
+  by_project_24h: ProjectBreakdown[];
   recent: UsageEvent[];
   /**
    * Pick of the most "important" snapshot across all sources, chosen by:
