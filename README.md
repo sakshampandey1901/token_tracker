@@ -1,5 +1,5 @@
 # Token Tracker
-> Keep track of token usage of your CLI agents while coding (claude and codex).
+> Keep track of token usage of your CLI agents while coding (claude and codex only).
 
 ## Dashboard
 
